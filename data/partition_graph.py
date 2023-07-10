@@ -102,13 +102,13 @@ def create_cluster_json(
         f.write(json_data)
     return block_lists
 
-def partition_graph(graph,
+def partition_graph(graph,netlist_name,
                     output_dir:str = os.path.abspath('.'),
                     keep_cluster_file:bool = True,
                     use_kahypar="mt_strong"):
     num_cells = graph.num_nodes(ntype='cell')
     blocks = int(np.ceil(num_cells / 10000))
-    input_graph_file_name = os.path.join(output_dir,'graph.input')
+    input_graph_file_name = os.path.join(output_dir,f'{netlist_name}_graph.input')
     if not os.path.exists(input_graph_file_name):
         create_input_graph_file(graph,input_graph_file_name)
     cmd_path = "/root/mt-kahypar/build/mt-kahypar/application"
@@ -119,10 +119,10 @@ def partition_graph(graph,
         assert 1==0,"error in partition"
     # elif use_kahypar == 'mt_fast':
     #     cmd = f"{cmd_path}/MtKaHyParFast -h {input_graph_file_name} -k {blocks} -e 0.03 -o km1 -m direct -p ./thirdparty/mt-kahypar/config/fast_preset.ini -t 24"
-    grouping_filename = os.path.join(output_dir,f"graph.input.part{blocks}.epsilon0.03.seed0.KaHyPar")
+    grouping_filename = os.path.join(output_dir,f"{netlist_name}_graph.input.part{blocks}.epsilon0.03.seed0.KaHyPar")
     if not os.path.exists(grouping_filename):
         os.system(cmd)
-    cluster_json_filename = os.path.join(output_dir,"cell_clusters.json")
+    cluster_json_filename = os.path.join(output_dir,f"{netlist_name}_cell_clusters.json")
     if not os.path.exists(cluster_json_filename):
         partition_list = create_cluster_json(graph,grouping_filename,cluster_json_filename,blocks)
     else:

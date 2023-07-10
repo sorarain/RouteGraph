@@ -1,10 +1,6 @@
 import os
 import sys
-sys.path.append(os.path.join(os.path.abspath('.'),'build'))
-sys.path.append(os.path.abspath('.'))
 
-import PlaceDB
-import Params
 from partition_graph import partition_graph
 
 import numpy as np
@@ -16,6 +12,7 @@ import pandas as pd
 from queue import Queue
 import torch
 import time
+import os.path as osp
 
 def get_w():
     param_dir_list = [
@@ -104,10 +101,104 @@ def get_pos(netlist_dir):
     ])
     # node_pos_x = np.load(f"/root/autodl-tmp/{netlist_name}_processed/xdata_900.npy")
     # node_pos_y = np.load(f"/root/autodl-tmp/{netlist_name}_processed/ydata_900.npy")
-    node_pos_x = np.load(os.path.join(netlist_dir,"xdata_900.npy"))
-    node_pos_y = np.load(os.path.join(netlist_dir,"ydata_900.npy"))
+    num = 0
+    for i in range(1000):
+        if os.path.exists(os.path.join(netlist_dir,f"xdata_{i}.npy")):
+            num = i
+            break
+    node_pos_x = np.load(os.path.join(netlist_dir,f"xdata_{num}.npy"))
+    node_pos_y = np.load(os.path.join(netlist_dir,f"ydata_{num}.npy"))
     node_pos = np.vstack((node_pos_x,node_pos_y)).T
     return node_pos
+
+def get_cell_size(netlist_dir):
+    size_x = np.array([
+        10,10,10,10,10,10
+    ])
+    size_y = np.array([
+        10,10,10,10,10,10
+    ])
+    size_x,size_y = np.load(osp.join(netlist_dir,"sizdata_x.npy")),np.load(osp.join(netlist_dir,"sizdata_y.npy"))
+    return size_x,size_y
+
+def get_node_pin_num(edges,num_nodes) -> np.ndarray:
+    node_pin_num = np.zeros((num_nodes),dtype=np.float32)
+    for _,list_node_feats in tqdm.tqdm(edges.items(),total=len(edges.keys()),leave=False):
+        for node,_,_,_ in list_node_feats:
+            node_pin_num[node] += 1
+    return node_pin_num
+
+def get_h_net_density_grid(netlist_dir) -> np.ndarray:
+    num = -1
+    for i in range(1000):
+        if os.path.exists(f"{netlist_dir}/iter_{i}_bad_cmap_h.npy"):
+            num = i
+            break
+    assert os.path.exists(f"{netlist_dir}/iter_{num}_bad_cmap_h.npy"),f"{netlist_dir}/iter_{num}_bad_cmap_h.npy"
+    return np.load(f"{netlist_dir}/iter_{num}_bad_cmap_h.npy")
+    # return 0.5 * np.ones((1000,1000))
+
+def get_v_net_density_grid(netlist_dir) -> np.ndarray:
+    num = -1
+    for i in range(1000):
+        if os.path.exists(f"{netlist_dir}/iter_{i}_bad_cmap_v.npy"):
+            num = i
+            break
+    assert os.path.exists(f"{netlist_dir}/iter_{num}_bad_cmap_v.npy")
+    return np.load(f"{netlist_dir}/iter_{num}_bad_cmap_v.npy")
+    # return 0.5 * np.ones((1000,1000))
+
+def get_net2hpwl(netlist_dir) -> np.ndarray:
+    num = -1
+    netlist_dir = os.path.join("/",*netlist_dir.split("/")[:-1],"superblue_0425_withHPWL",netlist_dir.split("/")[-1])
+    for i in range(1000):
+        if os.path.exists(f"{netlist_dir}/iter_{i}_net2hpwl.npy"):
+            num = i
+            break
+    assert os.path.exists(f"{netlist_dir}/iter_{num}_net2hpwl.npy")
+    return np.load(f"{netlist_dir}/iter_{num}_net2hpwl.npy")
+
+def get_node_congestion_label(netlist_dir) -> np.ndarray:
+    num = -1
+    for i in range(1000):
+        if os.path.exists(f"{netlist_dir}/iter_{i}_node_label_full_100000_.npy"):
+            num = i
+            break
+    assert os.path.exists(f"{netlist_dir}/iter_{num}_node_label_full_100000_.npy")
+    return np.load(f"{netlist_dir}/iter_{num}_node_label_full_100000_.npy")[:,8]
+
+def get_pin_density(density_map,bin_x,bin_y,node_pos,edge) -> np.ndarray:
+    pin_density = np.zeros_like(density_map,dtype=np.float32)
+    for _,list_node_feats in edge.items():
+        for node,pin_offset_x,pin_offset_y,_ in list_node_feats:
+            pin_x,pin_y = node_pos[node]
+            pin_x += pin_offset_x
+            pin_y += pin_offset_y
+            index_x,index_y = int(pin_x / bin_x),int(pin_y / bin_y)
+            pin_density[index_x,index_y] += 1
+    return pin_density
+
+def get_node_density(density_map,bin_x,bin_y,node_pos) -> np.ndarray:
+    node_density = np.zeros_like(density_map,dtype=np.float32)
+    for x,y in node_pos:
+        index_x,index_y = int(x / bin_x),int(y / bin_y)
+        node_density[index_x,index_y] += 1
+    return node_density
+
+def feature_grid2node(grid_feature: np.ndarray, bin_x, bin_y, node_pos) -> np.ndarray:
+    return np.array([
+        grid_feature[int (x / bin_x),int(y / bin_y) ] for x,y in node_pos
+    ],dtype=np.float32)
+
+def fo_average(g):
+    pass
+
+def feature_grid2hanna(grid_feature: np.ndarray, bin_x, bin_y, pos1_x, pos1_y, pos2_x, pos2_y):
+    begin_index_x = int(pos1_x / bin_x)
+    begin_index_y = int(pos1_y / bin_y)
+    end_index_y = int(pos2_y / bin_y)
+    return np.mean(grid_feature[begin_index_x,begin_index_y:end_index_y+1])
+
 
 def intersect(pos_x_1_1,pos_y_1_1,pos_x_2_1,pos_y_2_1,
             pos_x_1_2,pos_y_1_2,pos_x_2_2,pos_y_2_2):
@@ -120,7 +211,7 @@ def intersect(pos_x_1_1,pos_y_1_1,pos_x_2_1,pos_y_2_1,
         assert 0==1,"error in intersect"
 
 def build_group_hanna_point(pos_1_dict,hanna_point_info,max_pos_2,min_pos_2,id_num_hanna_points,key,
-                            route_edge_us,route_edge_vs,pin_dict):#key=['x','y']
+                            route_edge_us,route_edge_vs,pin_dict,h_net_density_grid,v_net_density_grid,pin_density_grid,node_density_grid,bin_x,bin_y):#key=['x','y']
     pos_1_list = list(set(pos_1_dict.keys()))
     id2pinpos_y = set()
     for pos_1 in pos_1_list:
@@ -153,7 +244,17 @@ def build_group_hanna_point(pos_1_dict,hanna_point_info,max_pos_2,min_pos_2,id_n
                 if (pos_x,pos_y) in pin_dict:
                     tmp_hanna_point_list.append([pos_x,pos_y,pos_x,pos_y,pin_dict[(pos_x,pos_y)]])
                 continue
-            hanna_point_info[id_num_hanna_points] = [pre_pos_x,pre_pos_y,pos_x,pos_y]#flag 0:v  1:h
+            # feature_grid2hanna(h_net_density_grid,bin_x,bin_y,pre_pos_x,pre_pos_y,pos_x,pos_y)
+            # feature_grid2hanna(v_net_density_grid,bin_x,bin_y,pre_pos_x,pre_pos_y,pos_x,pos_y)
+            # feature_grid2hanna(pin_density_grid,bin_x,bin_y,pre_pos_x,pre_pos_y,pos_x,pos_y)
+            # feature_grid2hanna(node_density_grid,bin_x,bin_y,pre_pos_x,pre_pos_y,pos_x,pos_y)
+            
+            hanna_point_info.append([pre_pos_x,pre_pos_y,pos_x,pos_y,
+                                                    feature_grid2hanna(h_net_density_grid,bin_x,bin_y,pre_pos_x,pre_pos_y,pos_x,pos_y),
+                                                    feature_grid2hanna(v_net_density_grid,bin_x,bin_y,pre_pos_x,pre_pos_y,pos_x,pos_y),
+                                                    feature_grid2hanna(pin_density_grid,bin_x,bin_y,pre_pos_x,pre_pos_y,pos_x,pos_y),
+                                                    feature_grid2hanna(node_density_grid,bin_x,bin_y,pre_pos_x,pre_pos_y,pos_x,pos_y),
+                                                    ])#flag 0:v  1:h
             #########create group hanna point###########
             #########connect to pin in this line###########
             flag_1,flag_2 = pre_pos_y,pos_y
@@ -206,18 +307,18 @@ def build_group_hanna_point(pos_1_dict,hanna_point_info,max_pos_2,min_pos_2,id_n
     # print(hanna_point_info)
     # print(route_edge_us)
     # print(route_edge_vs)
-    return route_edge_us,route_edge_vs,id_num_hanna_points
+    return route_edge_us, route_edge_vs, hanna_point_info, id_num_hanna_points
         #########connect to pin in pre line###########
 
 
 
 
-def build_hanan_grid(pin_xs,pin_ys,nodes,num_hanna_points):
+def build_hanan_grid(pin_xs,pin_ys,nodes,num_hanna_points,h_net_density_grid,v_net_density_grid,pin_density_grid,node_density_grid,bin_x,bin_y):
     pre_num_hanna_points = num_hanna_points
     pos_x_dict = {}
     pos_y_dict = {}
     pin_point_dict = {}
-    hanna_point_info = {}
+    hanna_point_info = []
     pin_dict = {}
     route_edge_us = []
     route_edge_vs = []
@@ -235,33 +336,37 @@ def build_hanan_grid(pin_xs,pin_ys,nodes,num_hanna_points):
         else:
             pin_dict[(pin_x,pin_y)] = num_hanna_points
             pin_edge_hanna_points.append(num_hanna_points)
+            hanna_point_info.append([pin_x,pin_y,pin_x,pin_y,
+                                    feature_grid2hanna(h_net_density_grid,bin_x,bin_y,pin_x,pin_y,pin_x,pin_y),
+                                    feature_grid2hanna(v_net_density_grid,bin_x,bin_y,pin_x,pin_y,pin_x,pin_y),
+                                    feature_grid2hanna(pin_density_grid,bin_x,bin_y,pin_x,pin_y,pin_x,pin_y),
+                                    feature_grid2hanna(node_density_grid,bin_x,bin_y,pin_x,pin_y,pin_x,pin_y),    
+            ])
             num_hanna_points+=1
         pin_point_dict[(pin_x,pin_y)] = node
         pin_edge_nodes.append(node)
     
-    route_edge_us,route_edge_vs,num_hanna_points = build_group_hanna_point(pos_x_dict,hanna_point_info,max_pos_y,min_pos_y,num_hanna_points,'x',
-                            route_edge_us,route_edge_vs,pin_dict)
+    route_edge_us, route_edge_vs, hanna_point_info, num_hanna_points = build_group_hanna_point(pos_x_dict,hanna_point_info,max_pos_y,min_pos_y,num_hanna_points,'x',
+                            route_edge_us,route_edge_vs,pin_dict,h_net_density_grid,v_net_density_grid,pin_density_grid,node_density_grid,bin_x,bin_y)
 
 
-    return route_edge_us,route_edge_vs,pin_edge_nodes,pin_edge_hanna_points,num_hanna_points - pre_num_hanna_points
+    return route_edge_us, route_edge_vs, pin_edge_nodes, pin_edge_hanna_points, hanna_point_info, num_hanna_points - pre_num_hanna_points
 
 def transform_graph2edges(graph):
     num_nets = graph.num_nodes(ntype='net')
     nets,cells = graph.edges(etype='pinned')
     edges_feats = graph.edges['pinned'].data['feats']
     edges = {}
-    # iter_info = tqdm.tqdm(zip(nets,cells,edges_feats),total=len(nets))
     iter_info = zip(nets,cells,edges_feats)
     for net,cell,pin_feats in iter_info:
         pin_px, pin_py, pin_io = pin_feats
         edges.setdefault(net.item(),[]).append([cell.item(),pin_px.item(), pin_py.item(), pin_io.item()])
     return edges
 
-def build_route_graph(graph,node_pos):
+def build_route_graph(graph,node_pos,h_net_density_grid,v_net_density_grid,pin_density_grid,node_density_grid,bin_x,bin_y):
     # edges = get_edge()
     # node_pos = get_pos()
     edges = transform_graph2edges(graph)
-    # edge_iter = tqdm.tqdm(edges.items(),total=len(edges))
     edge_iter = edges.items()
     us = []
     vs = []
@@ -269,11 +374,12 @@ def build_route_graph(graph,node_pos):
     route_edge_vs = []
     pin_edge_nodes = []
     pin_edge_hanna_points = []
+    hanna_point_info = []
     num_hanna_points = 0
-    # total_time = 0
-    # total_init_time = 0
-    # total_route_time = 0
-    # total_append_time = 0
+    total_time = 0
+    total_init_time = 0
+    total_route_time = 0
+    total_append_time = 0
     for net,list_node_feats in edge_iter:
         # total_a = time.time()
         pin_xs = []
@@ -288,76 +394,154 @@ def build_route_graph(graph,node_pos):
             pin_ys.append(py + pin_py)
         # total_init_time += time.time() - total_a
         # total_b = time.time()
-        sub_route_edge_us,sub_route_edge_vs,sub_pin_edge_nodes,sub_pin_edge_hanna_points,sub_num_hanna_point = build_hanan_grid(pin_xs,pin_ys,nodes,num_hanna_points)
+        sub_route_edge_us,sub_route_edge_vs,sub_pin_edge_nodes,sub_pin_edge_hanna_points, sub_hanna_point_info, sub_num_hanna_point = build_hanan_grid(pin_xs,pin_ys,nodes,num_hanna_points,h_net_density_grid,v_net_density_grid,pin_density_grid,node_density_grid,bin_x,bin_y)
         # total_route_time += time.time() - total_b
         # total_b = time.time()
         route_edge_us.extend(sub_route_edge_us)
         route_edge_vs.extend(sub_route_edge_vs)
         pin_edge_nodes.extend(sub_pin_edge_nodes)
         pin_edge_hanna_points.extend(sub_pin_edge_hanna_points)
+        hanna_point_info.extend(sub_hanna_point_info)
         num_hanna_points+=sub_num_hanna_point
         # total_append_time += time.time() - total_b
         # total_time += time.time() - total_a
-    graph = dgl.heterograph({
+    route_graph = dgl.heterograph({
         ('cell','pins','net'):(us,vs),
         ('net','pinned','cell'):(vs,us),
         ('cell','point-to','hanna'):(pin_edge_nodes,pin_edge_hanna_points),
         ('hanna','point-from','cell'):(pin_edge_hanna_points,pin_edge_nodes),
         ('hanna','connect','hanna'):(route_edge_us,route_edge_vs)
-    })
+    })#,num_nodes_dict={'cell':len(node_pos),'net':len(net_degree)}
+    route_graph.nodes['cell'].data['hv'] = graph.nodes['cell'].data['hv']
+    route_graph.nodes['cell'].data['pos'] = graph.nodes['cell'].data['pos']
+    route_graph.nodes['net'].data['hv'] = graph.nodes['net'].data['hv']
+    route_graph.nodes['net'].data['degree'] = graph.nodes['net'].data['degree']
+    route_graph.nodes['hanna'].data['hv'] = torch.tensor(hanna_point_info,dtype=torch.float32)
+
+    route_graph.edges['pinned'].data['feats'] = graph.edges['pinned'].data['feats']
+    # print("--------------")
     # print(f"total init time {total_init_time}s averange time is {total_init_time/len(edges)}s")
     # print(f"total route time {total_route_time}s averange time is {total_route_time/len(edges)}s")
     # print(f"total append time {total_append_time}s averange time is {total_append_time/len(edges)}s")
     # print(f"total time {total_time}s averange time is {total_time/len(edges)}s")
-    return graph
+    return route_graph
 
-def load_graph(netlist_name):
-    edges = get_edge(netlist_name)
-    node_pos = get_pos(netlist_name)
-    edge_iter = tqdm.tqdm(edges.items(),total=len(edges))
+
+
+def load_graph(netlist_dir):
+    netlist_process_dir = f"{netlist_dir}_processed"
+
+    edges = get_edge(netlist_process_dir)
+    node_pos = get_pos(netlist_process_dir)
+
+    cell_size_x,cell_size_y = get_cell_size(netlist_process_dir)
+
+    node_pin_num = get_node_pin_num(edges, node_pos.shape[0])
+
+    h_net_density_grid = get_h_net_density_grid(netlist_dir)
+    v_net_density_grid = get_v_net_density_grid(netlist_dir)
+
+    net2hpwl = get_net2hpwl(netlist_dir)
+    net2hpwl[net2hpwl < 1e-4] = 1e-4
+    net2hpwl = np.log10(net2hpwl)
+    net2hpwl = torch.tensor(net2hpwl,dtype=torch.float32)
+
+    raw_labels = get_node_congestion_label(netlist_process_dir)
+    labels = np.zeros(node_pos.shape[0],dtype=np.float32)
+    index = raw_labels.shape[0]
+    labels[:index] = raw_labels
+    labels = torch.tensor(labels,dtype=torch.float32)
+
+
+
+    #bin_x,bin_y 32,40
+    bin_x,bin_y = 32,40
+    pin_density_grid = get_pin_density(h_net_density_grid, 32, 40, node_pos,edges)
+    node_density_grid = get_node_density(h_net_density_grid, 32, 40, node_pos)
+    node_hv = torch.tensor(np.vstack((
+        cell_size_x,cell_size_y,node_pin_num,
+        feature_grid2node(h_net_density_grid, 32, 40, node_pos),
+        feature_grid2node(v_net_density_grid, 32, 40, node_pos),
+        feature_grid2node(pin_density_grid, 32, 40, node_pos),
+        feature_grid2node(node_density_grid, 32, 40, node_pos),
+    )),dtype=torch.float32).t()
+    
+    edge_iter = tqdm.tqdm(edges.items(),total=len(edges),leave=False)
     us = []
     vs = []
     pins_feats = []
+    net_span_feat = []
     net_degree = []
     for net,list_node_feats in edge_iter:
         net_degree.append(len(list_node_feats))
+        xs,ys = [], []
+        pxs,pys = [], []
         for node, pin_px, pin_py, pin_io in list_node_feats:
             us.append(node)
             vs.append(net)
             pins_feats.append([pin_px, pin_py, pin_io])
+            x,y = node_pos[node,:]
+            px =x + pin_px
+            py =y + pin_py
+            xs.append(px)
+            ys.append(py)
+            pxs.append(int(px / bin_x))
+            pys.append(int(py / bin_y))
+        min_x,max_x,min_y,max_y = min(xs),max(xs),min(ys),max(ys)
+        span_h = max_x - min_x + 1
+        span_v = max_y - min_y + 1
+        min_px,max_px,min_py,max_py = min(pxs),max(pxs),min(pys),max(pys)
+        span_ph = max_px - min_px + 1
+        span_pv = max_py - min_py + 1
+        net_span_feat.append([span_h ,span_v, span_h * span_v, 
+                            span_ph, span_pv, span_ph * span_pv,len(list_node_feats)])
     pins_feats = torch.tensor(pins_feats,dtype=torch.float32)
+    net_degree_ = np.array(net_degree,dtype=np.float32)
+    net_degree = torch.unsqueeze(torch.tensor(net_degree,dtype=torch.float32),dim=-1)
+    net_span_feat = torch.tensor(net_span_feat,dtype=torch.float32)
+    net_hv = torch.cat([net_degree,net_span_feat],dim=-1)
     node_pos = torch.tensor(node_pos,dtype=torch.float32)
     hetero_graph = dgl.heterograph({
         ('cell','pins','net'):(us,vs),
         ('net','pinned','cell'):(vs,us),
     },num_nodes_dict={'cell':len(node_pos),'net':len(net_degree)})
+
+    # extra = fo_average(hetero_graph)
+
     hetero_graph.nodes['cell'].data['pos'] = node_pos
+    hetero_graph.nodes['cell'].data['hv'] = node_hv
+    hetero_graph.nodes['cell'].data['label'] = labels
+    hetero_graph.nodes['net'].data['hv'] = net_span_feat
+    hetero_graph.nodes['net'].data['degree'] = net_degree
+    hetero_graph.nodes['net'].data['label'] = net2hpwl
     hetero_graph.edges['pinned'].data['feats'] = pins_feats
-    partition_list = partition_graph(hetero_graph)
-    # route_graph = build_route_graph(hetero_graph,node_pos)
-    # return route_graph
+    partition_list = partition_graph(hetero_graph,netlist_process_dir.split('/')[-1],netlist_process_dir)
 
     list_hetero_graph = []
     list_route_graph = []
-    iter_partition_list = tqdm.tqdm(partition_list, total=len(partition_list))
+    iter_partition_list = tqdm.tqdm(enumerate(partition_list), total=len(partition_list))
     total_route_time = 0
     total_sub_time = 0
     total_init_time = 0
     total_time = 0
     num_hanna_point = 0
     num_hanna_edges = 0
-    for partition in iter_partition_list:
+    all_net_degree_dict = {}
+    node_belong_partition = np.ones(hetero_graph.num_nodes(ntype='cell'))
+    for i,partition in enumerate(partition_list):
+        for node in list(set(partition)):
+            node_belong_partition[node] = i
+    for net_id, node_id in zip(*[ns.tolist() for ns in hetero_graph.edges(etype='pinned')]):
+        belong = node_belong_partition[node_id]
+        all_net_degree_dict.setdefault(belong,{}).setdefault(net_id,0)
+        all_net_degree_dict[belong][net_id] += 1
+    
+    for i,partition in iter_partition_list:
         # total_a = time.time()
         partition_set = set(partition)
-        new_net_degree_dict = {}
-        for net_id, node_id in zip(*[ns.tolist() for ns in hetero_graph.edges(etype='pinned')]):
-            if node_id in partition_set:
-                new_net_degree_dict.setdefault(net_id, 0)
-                new_net_degree_dict[net_id] += 1
+        new_net_degree_dict = all_net_degree_dict[i]
         keep_nets_id = np.array(list(new_net_degree_dict.keys()))
         keep_nets_degree = np.array(list(new_net_degree_dict.values()))
-        # good_nets = np.abs(net_degree[keep_nets_id] - keep_nets_degree) < 1e-5
-        # keep_nets_id = keep_nets_id[good_nets]
         # total_init_time += time.time() - total_a
         # total_b = time.time()
         part_hetero_graph = dgl.node_subgraph(hetero_graph, nodes={'cell': partition, 'net': keep_nets_id})
@@ -365,11 +549,15 @@ def load_graph(netlist_name):
         list_hetero_graph.append(part_hetero_graph)
         sub_node_pos = part_hetero_graph.nodes['cell'].data['pos']
         # total_b = time.time()
-        sub_route_graph = build_route_graph(part_hetero_graph,sub_node_pos)
+        sub_route_graph = build_route_graph(part_hetero_graph,sub_node_pos,
+                            h_net_density_grid,
+                            v_net_density_grid,
+                            pin_density_grid,
+                            node_density_grid,
+                            32,40)
         # total_route_time += time.time() - total_b
         list_route_graph.append(sub_route_graph)
         # total_time += time.time() - total_a
-        # print(sub_route_graph)
         num_hanna_point += sub_route_graph.num_nodes(ntype='hanna')
         num_hanna_edges += sub_route_graph.num_edges(etype='connect')
     # print(f"total init time {total_init_time}s average time {total_init_time/len(partition_list)}s")
@@ -378,6 +566,9 @@ def load_graph(netlist_name):
     # print(f"total time {total_time}s average time {total_time/len(partition_list)}s")
     print(f"total hanna point {num_hanna_point}")
     print(f"total hanna edges {num_hanna_edges}")
+    list_tuple_graph = list(zip(list_hetero_graph, list_route_graph))
+    # with open(osp.join(netlist_process_dir,"graph.pickle"),"wb+") as f:
+    #     pickle.dump(list_tuple_graph, f)
     # return num_hanna_point,num_hanna_edges
     return list_hetero_graph,list_route_graph
 
@@ -385,27 +576,34 @@ def load_graph(netlist_name):
 if __name__ == '__main__':
     netlist_name_list = [
         'superblue1',
-        # 'superblue2',
-        # 'superblue3',
-        # 'superblue5',
-        # 'superblue6',
-        # 'superblue7',
-        # 'superblue9',
-        # 'superblue11',
-        # 'superblue14',
-        # 'superblue16',
-        # 'superblue19',
+        'superblue2',
+        'superblue3',
+        'superblue5',
+        'superblue6',
+        'superblue7',
+        'superblue9',
+        'superblue11',
+        'superblue14',
+        'superblue16',
+        'superblue19',
     ]
     netlist_info = []
     for netlist_name in netlist_name_list:
-        # num_hanna_point,num_hanna_edges = load_graph(netlist_name)
-        netlist_info.append([netlist_name,0,0])
-    netlist_info = np.array(netlist_info)
-    df = pd.DataFrame()
-    df['netlist_name'] = netlist_info[:,0]
-    df['num hanan points'] = netlist_info[:,1]
-    df['hanan edges'] = netlist_info[:,2]
-    df.to_excel("./group_hanna_info.xlsx",index=False)
+        num_hanna_point,num_hanna_edges = load_graph(f"/root/autodl-tmp/data/{netlist_name}")
+        netlist_info.append([netlist_name,num_hanna_point,num_hanna_edges])
+        # netlist_info = np.array(netlist_info)
+        # df = pd.DataFrame()
+        # df['netlist_name'] = netlist_info[:,0]
+        # df['num hanan points'] = netlist_info[:,1]
+        # df['hanan edges'] = netlist_info[:,2]
+        # df.to_excel("./group_hanna_info.xlsx",index=False)
+        # netlist_info = list(netlist_info)
+    # netlist_info = np.array(netlist_info)
+    # df = pd.DataFrame()
+    # df['netlist_name'] = netlist_info[:,0]
+    # df['num hanan points'] = netlist_info[:,1]
+    # df['hanan edges'] = netlist_info[:,2]
+    # df.to_excel("./group_hanna_info.xlsx",index=False)
     # print(graph)
     # with open("/root/test.pickle",'wb+') as fp:
     #     pickle.dump(graph,fp)
