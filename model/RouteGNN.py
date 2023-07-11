@@ -174,21 +174,21 @@ if __name__ =='__main__':
     num_net = 3
     num_hanna = 17
     num_pin = 8
-    with open("/root/RouteGraph/test/test_netlist_graph.json","r") as f:
+    with open("../test/test_netlist_graph.json","r") as f:
         netlist_edge = json.load(f)
     netlist_us,netlist_vs = [],[]
     for net,list_node in enumerate(netlist_edge):
         for node in list_node:
             netlist_us.append(net)
             netlist_vs.append(node)
-    with open("/root/RouteGraph/test/test_hanna_graph.json","r") as f:
+    with open("../test/test_hanna_graph.json","r") as f:
         hanna_edge = json.load(f)
     hanna_edge_us,hanna_edge_vs = [],[]
     for u,v in hanna_edge:
         hanna_edge_us.append(u)
         hanna_edge_vs.append(v)
     
-    with open("/root/RouteGraph/test/test_cell2hanna_graph.json","r") as f:
+    with open("../test/test_cell2hanna_graph.json","r") as f:
         cell2hanna_edge = json.load(f)
     cell2hanna_edge_us,cell2hanna_edge_vs = [],[]
     for u,v in cell2hanna_edge:
@@ -224,7 +224,7 @@ if __name__ =='__main__':
         n_target = 1,
         config = config
     )
-    with open("/root/autodl-tmp/data/superblue19/graph.pickle","rb") as f:
+    with open("../data/graph.pickle","rb") as f:
         list_tuple_graph = pickle.load(f)
     for hetero_graph,route_graph in tqdm.tqdm(list_tuple_graph):
         # hetero_graph = list_tuple_graph[0][i]

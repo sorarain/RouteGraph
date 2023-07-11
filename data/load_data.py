@@ -1,6 +1,9 @@
 import os
 import os.path as osp
 import sys
+
+from RouteGraph.data.graph import load_graph
+
 sys.path.append(os.path.abspath("."))
 
 import numpy as np
@@ -13,7 +16,6 @@ from queue import Queue
 import torch
 import time
 
-from data.graph import load_graph
 
 def load_data(netlist_dir:str,save_type:int=1):
     if save_type == 1 and os.path.exists(osp.join(netlist_dir,'graph.pickle')):

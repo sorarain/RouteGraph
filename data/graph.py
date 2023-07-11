@@ -1,7 +1,7 @@
 import os
 import sys
 
-from partition_graph import partition_graph
+
 
 import numpy as np
 import itertools
@@ -13,6 +13,9 @@ from queue import Queue
 import torch
 import time
 import os.path as osp
+
+from RouteGraph.data.partition_graph import partition_graph
+
 
 def get_w():
     param_dir_list = [
