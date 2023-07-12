@@ -11,8 +11,8 @@ import argparse
 import torch
 import torch.nn as nn
 
-from RouteGraph.data.load_data import load_data
-from RouteGraph.model.RouteGNN import NetlistGNN
+from data.load_data import load_data
+from model.RouteGNN import NetlistGNN
 
 
 def train_congestion(
@@ -114,11 +114,11 @@ def train_congestion(
         losses = []
         n_tuples = len(train_list_netlist)
         for i, (hetero_graph, hanna_graph) in enumerate(ltg):
-            to_device(hetero_graph,hanna_graph)
+            hetreo_graph, hanna_graph = to_device(hetero_graph,hanna_graph)
             optimizer.zero_grad()
             pred_cell, pred_net = forward(hanna_graph)
-            cell_label = hetero_graph.nodes['cell'].data['label']
-            net_label = hetero_graph.nodes['cell'].data['label']
+            cell_label = hetero_graph.nodes['cell'].data['label'].to(device)
+            net_label = hetero_graph.nodes['cell'].data['label'].to(device)
             cell_loss =loss_f(pred_cell, cell_label.float())
             net_loss = loss_f(pred_net, net_label.float())
             loss = cell_loss + net_loss

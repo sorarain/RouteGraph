@@ -2,7 +2,7 @@ import os
 import os.path as osp
 import sys
 
-from RouteGraph.data.graph import load_graph
+from data.graph import load_graph
 
 sys.path.append(os.path.abspath("."))
 

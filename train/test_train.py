@@ -1,6 +1,6 @@
 import argparse
 
-from RouteGraph.train.train import train_congestion
+from train import train_congestion
 
 argparser = argparse.ArgumentParser("Training")
 
