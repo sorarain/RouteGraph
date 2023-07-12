@@ -14,7 +14,7 @@ import torch
 import time
 import os.path as osp
 
-from RouteGraph.data.partition_graph import partition_graph
+from data.partition_graph import partition_graph
 
 
 def get_w():
