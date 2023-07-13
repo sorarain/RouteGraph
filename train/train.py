@@ -11,8 +11,8 @@ import argparse
 import torch
 import torch.nn as nn
 
-from RouteGraph.data.load_data import load_data
-from RouteGraph.model.RouteGNN import NetlistGNN
+from data.load_data import load_data
+from model.RouteGNN import NetlistGNN
 
 
 def train_congestion(
@@ -46,7 +46,7 @@ def train_congestion(
     # train_list_netlist = load_data(train_dataset_names)
     # validation_list_netlist = load_data(validation_dataset_names)
     # test_list_netlist = load_data(test_dataset_names)
-    with open('../data/graph.pickle', 'rb') as f:
+    with open('./data/graph.pickle', 'rb') as f:
         train_list_netlist = pickle.load(f)
 
     print('###MODEL###')
@@ -114,15 +114,12 @@ def train_congestion(
         losses = []
         n_tuples = len(train_list_netlist)
         for i, (hetero_graph, hanna_graph) in enumerate(ltg):
-            to_device(hetero_graph,hanna_graph)
+            hetero_graph,hanna_graph = to_device(hetero_graph,hanna_graph)
             optimizer.zero_grad()
             pred_cell, pred_net = forward(hanna_graph)
             cell_label = hetero_graph.nodes['cell'].data['label']
-            net_label = hetero_graph.nodes['cell'].data['label']
-            cell_loss =loss_f(pred_cell, cell_label.float())
-            net_loss = loss_f(pred_net, net_label.float())
-            loss = cell_loss + net_loss
-            print(loss)
+            cell_loss =loss_f(pred_cell.squeeze().float(), cell_label.squeeze().float())
+            loss = cell_loss
             losses.append(loss)
             if len(losses) >= args.batch or i == n_tuples - 1:
                 sum(losses).backward()
