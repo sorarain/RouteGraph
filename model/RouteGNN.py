@@ -7,10 +7,11 @@ from typing import Tuple, Dict, Any, List, Union
 import json
 import pickle
 import tqdm
+import copy
 
 
 class NodeNetGNN(nn.Module):
-    def __init__(self, hidden_node_feats: int, hidden_net_feats: int, hidden_pin_feats: int, hidden_edge_feats: int,
+    def __init__(self, hidden_node_feats: int, hidden_net_feats: int, hidden_pin_feats: int, hidden_hanna_feats: int,
                  out_node_feats: int, out_net_feats: int, topo_conv_type, agg_type):
         super(NodeNetGNN, self).__init__()
         assert topo_conv_type in ['MPNN', 'SAGE', 'CFCNN', 'GCN'], f'{topo_conv_type} not in MPNN/SAGE/CFCNN/GCN'
@@ -19,15 +20,11 @@ class NodeNetGNN(nn.Module):
         # self.route_conv_type = route_conv_type
         self.net_lin = nn.Linear(hidden_net_feats, hidden_net_feats)
         self.topo_lin = nn.Linear(hidden_pin_feats, hidden_net_feats * out_node_feats)
-        self.route_lin = nn.Linear(hidden_edge_feats, hidden_node_feats * out_node_feats)
         self.topo_weight = nn.Linear(hidden_pin_feats, 1)
-        self.route_weight = nn.Linear(hidden_edge_feats, 1)
 
         def topo_edge_func(efeat):
             return self.topo_lin(efeat)
 
-        def geom_edge_func(efeat):
-            return self.route_lin(efeat)
         
         self.hetero_conv = HeteroGraphConv({
             'pins': GraphConv(in_feats=hidden_node_feats, out_feats=out_net_feats),
@@ -40,7 +37,7 @@ class NodeNetGNN(nn.Module):
                        hidden_feats=hidden_node_feats, out_feats=out_node_feats) if topo_conv_type == 'CFCNN' else
                 GraphConv(in_feats=hidden_net_feats, out_feats=out_node_feats),
             'connect':
-                GraphConv(in_feats=hidden_node_feats, out_feats=out_net_feats),
+                GraphConv(in_feats=hidden_hanna_feats, out_feats=hidden_hanna_feats),
                 # NNConv(in_feats=hidden_node_feats, out_feats=out_node_feats,
                 #        edge_func=geom_edge_func) if route_conv_type == 'MPNN' else
                 # SAGEConv(in_feats=hidden_node_feats, out_feats=out_node_feats,
@@ -48,8 +45,8 @@ class NodeNetGNN(nn.Module):
                 # CFConv(node_in_feats=hidden_node_feats, edge_in_feats=hidden_edge_feats,
                 #        hidden_feats=hidden_node_feats, out_feats=out_node_feats) if route_conv_type == 'CFCNN' else
                 # GATConv(in_feats=hidden_node_feats, out_feats=out_node_feats, num_heads=1),
-            'point-to': GraphConv(in_feats=hidden_node_feats, out_feats=out_net_feats),
-            'point-from': GraphConv(in_feats=hidden_node_feats, out_feats=out_net_feats),
+            'point-to': GraphConv(in_feats=hidden_node_feats, out_feats=hidden_hanna_feats),
+            'point-from': GraphConv(in_feats=hidden_hanna_feats, out_feats=hidden_node_feats),
         }, aggregate=agg_type)
 
     def forward(self, g: dgl.DGLHeteroGraph, node_feat: torch.Tensor, net_feat: torch.Tensor,
@@ -134,6 +131,7 @@ class NetlistGNN(nn.Module):
                 node_net_graph: dgl.DGLHeteroGraph = None
                 ) -> Tuple[torch.Tensor, torch.Tensor]:
         in_net_feat = torch.log10(in_net_feat + 1e-4)
+        in_hanna_feat[:,:4] += 1e3
         in_hanna_feat = torch.log10(in_hanna_feat + 1e-4)
         node_feat = F.leaky_relu(self.node_lin(in_node_feat))
         net_feat0 = net_feat = F.leaky_relu(self.net_lin(in_net_feat))

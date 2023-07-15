@@ -1,7 +1,7 @@
 import os
 import sys
 
-
+sys.path.append(os.path.abspath("."))
 
 import numpy as np
 import itertools
@@ -578,16 +578,16 @@ def load_graph(netlist_dir):
 
 if __name__ == '__main__':
     netlist_name_list = [
-        'superblue1',
-        'superblue2',
-        'superblue3',
-        'superblue5',
-        'superblue6',
-        'superblue7',
-        'superblue9',
-        'superblue11',
-        'superblue14',
-        'superblue16',
+        # 'superblue1',
+        # 'superblue2',
+        # 'superblue3',
+        # 'superblue5',
+        # 'superblue6',
+        # 'superblue7',
+        # 'superblue9',
+        # 'superblue11',
+        # 'superblue14',
+        # 'superblue16',
         'superblue19',
     ]
     netlist_info = []
