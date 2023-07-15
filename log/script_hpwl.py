@@ -57,9 +57,10 @@ PLT_TUPLES = [
 #     ('Ours', 'hpwl-superblue19/hyper.json'),
 #     ('Ours-topo', 'hpwl-superblue19/hyper-topo.json'),
     
-    ('Ours (evaluate)', 'hpwl-superblue19/hyper-trans.json'),
-    ('Ours', 'hpwl-superblue19/hyper.json'),
-    ('Ours (fine-tune)', 'hpwl-superblue19/hyper-ft.json'),
+    # ('Ours (evaluate)', 'hpwl-superblue19/hyper-trans.json'),
+    # ('Ours', 'hpwl-superblue19/hyper.json'),
+    # ('Ours (fine-tune)', 'hpwl-superblue19/hyper-ft.json'),
+    ('Ours wirelength','wirelength-superblue19/wirelength.json')
 ]
 
 if __name__ == '__main__':

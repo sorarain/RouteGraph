@@ -68,19 +68,21 @@ def plt_tendency(logs: List[Dict[str, Any]], fig_path: str) -> Dict[str, Any]:
 
 
 PLT_TUPLES = [
-    ('Ours', 'superblue19/hyper.json'),
-    ('Ours (o. geom.)', 'superblue19/hyper-geom.json'),
-    ('Ours (o. topo.)', 'superblue19/hyper-topo.json'),
+    # ('Ours', 'superblue19/hyper.json'),
+    # ('Ours (o. geom.)', 'superblue19/hyper-geom.json'),
+    # ('Ours (o. topo.)', 'superblue19/hyper-topo.json'),
 #     ('Ours (o. topo.) rec', 'superblue19/hyper-topo-rec.json'),
 #     ('Ours (o. topo.) new 1', 'superblue19/hyper-topo-test.json'),
 #     ('Ours (o. topo.) new 2', 'superblue19/hyper-topo-test2.json'),
 #     ('SAGE', 'superblue19/SAGE.json'),
 #     ('GCN', 'superblue19/GCN.json'),
-    ('GAT', 'superblue19/GAT.json'),
+    # ('GAT', 'superblue19/GAT.json'),
     # ('SAGE (w. geom.)', 'superblue19/SAGE-pos.json'),
     # ('GCN (w. geom.)', 'superblue19/GCN-pos.json'),
 #     ('GAT (w. geom.)', 'superblue19/GAT-pos.json'),
 #     ('CongestionNet', 'superblue19/CongestionNet.json'),
+    ('Ours Congestion','congestion-superblue19/congestion.json'),
+    ('Ours Congestion+pos','congestion+pos-superblue19/congestion+pos.json')
 ]
 
 if __name__ == '__main__':

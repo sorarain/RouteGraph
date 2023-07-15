@@ -16,16 +16,23 @@ import torch.nn as nn
 from data.load_data import load_data
 from model.RouteGNN import NetlistGNN
 from utils.output import printout, get_grid_level_corr, mean_dict
+from log.store_cong import store_cong_from_node
+
+import warnings
 
 
 def train_congestion(
         args,
-        train_dataset_names=None,
-        validation_dataset_names = None,
-        test_dataset_names = None,
+        netlists_dir = None,
+        train_netlists_names=None,
+        validation_netlists_names = None,
+        test_netlists_names = None,
         log_dir = None,
         fig_dir = None,
         model_dir = None,):
+    warnings.filterwarnings("ignore")
+    np.set_printoptions(precision=3, suppress=True)
+
     logs: List[Dict[str, Any]] = []
     seed = args.seed
     np.random.seed(seed)
@@ -41,26 +48,26 @@ def train_congestion(
         'NODE_FEATS': args.node_feats,
         'NET_FEATS': args.net_feats,
         'PIN_FEATS': args.pin_feats,
-        'EDGE_FEATS': args.edge_feats,
         'HANNA_FEATS': args.hanna_feats,
     }
 
     # load data
-    # train_list_netlist = load_data(train_dataset_names)
-    # validation_list_netlist = load_data(validation_dataset_names)
-    # test_list_netlist = load_data(test_dataset_names)
+    def load_netlists(netlists_names:List[str]):
+        list_tuple_graph = []
+        for netlist_name in netlists_names:
+            list_tuple_graph.append(load_data(os.path.join(netlists_dir,netlist_name)))
+        return list_tuple_graph
+    
+    train_list_netlist = load_netlists(train_netlists_names)
+    validation_list_netlist = load_netlists(validation_netlists_names)
+    test_list_netlist = load_netlists(test_netlists_names)
 
     #temporory training/ testing set
-    with open('../data/graph.pickle', 'rb') as f:
-        datalist = pickle.load(f)
-    train_list_netlist = [datalist[:50]]
-    test_list_netlist = [datalist[51:60]]
 
 
     print('###MODEL###')
     #model feature sizes
-    # node= cell
-    in_node_feats = train_list_netlist[0][0][1].nodes['cell'].data['hv'].shape[1]
+    in_node_feats = train_list_netlist[0][0][1].nodes['cell'].data['hv'].shape[1]+2*args.add_pos
     in_net_feats = train_list_netlist[0][0][1].nodes['net'].data['hv'].shape[1]
     in_hanna_feats = train_list_netlist[0][1][1].nodes['hanna'].data['hv'].shape[1]
     in_pin_feats = train_list_netlist[0][0][1].edges['pinned'].data['feats'].shape[1]
@@ -72,6 +79,10 @@ def train_congestion(
         in_pin_feats=in_pin_feats,
         config=config,
         n_target=1,
+        activation=args.outtype,
+        topo_conv_type=args.topo_conv_type,
+        agg_type=args.agg_type,
+        cat_raw=args.cat_raw
     ).to(device)
     #load model
     if args.model:
@@ -102,7 +113,10 @@ def train_congestion(
     def to_device(a,b):
         return a.to(device), b.to(device)
     def forward(hanna_graph):
-        in_node_feat = hanna_graph.nodes['cell'].data['hv']
+        if args.add_pos:
+            in_node_feat = torch.cat([hanna_graph.nodes['cell'].data['hv'],hanna_graph.nodes['cell'].data['pos']],dim=-1)
+        else:
+            in_node_feat = hanna_graph.nodes['cell'].data['hv']
         in_net_feat = hanna_graph.nodes['net'].data['hv']
         in_pin_feat = hanna_graph.edges['pinned'].data['feats']
         in_hanna_feat = hanna_graph.nodes['hanna'].data['hv']
@@ -127,16 +141,22 @@ def train_congestion(
         losses = []
         n_tuples = len(ltg)
         for i, (hetero_graph, hanna_graph) in enumerate(ltg):
-            hetreo_graph, hanna_graph = to_device(hetero_graph,hanna_graph)
+            hetero_graph, hanna_graph = to_device(hetero_graph,hanna_graph)
             optimizer.zero_grad()
             cell_pred, net_pred = forward(hanna_graph)
-            cell_label = hetero_graph.nodes['cell'].data['label'].to(device)
-            #net_label = hetero_graph.nodes['net'].data['label'].to(device)
-            cell_loss =loss_f(cell_pred, cell_label.float())
-            #net_loss = loss_f(net_pred, net_label.float())
-            #loss = cell_loss + net_loss
+            cell_label = hetero_graph.nodes['cell'].data['label']
+            weight = 1.0 / hetero_graph.nodes['cell'].data['hv'][:, 6]
+            weight[torch.isinf(weight)] = 0.0
+            #########
+            weight[torch.isinf(1.0 / (hetero_graph.nodes['cell'].data['pos'][:, 0] + hetero_graph.nodes['cell'].data['pos'][:, 1]))] = 0.0
+            ########
+            # cell_loss =loss_f(cell_pred.squeeze().view(-1), cell_label.float())
+            cell_loss = torch.sum(((cell_pred.view(-1) - cell_label.float()) ** 2) * weight) / (torch.sum(weight)+1e-4)
             loss = cell_loss
-            print(loss)
+            assert not torch.any(torch.isnan(cell_pred)),f"{torch.where(torch.isnan(cell_pred))}"
+            assert not torch.any(torch.isinf(cell_pred))
+            assert not torch.isnan(cell_loss),f"{weight} {torch.sum(weight)} {torch.isnan(cell_pred)}"
+            assert not torch.isinf(cell_loss)
             losses.append(loss)
             if len(losses) >= args.batch or i == n_tuples - 1:
                 sum(losses).backward()
@@ -150,22 +170,22 @@ def train_congestion(
         model.eval()
         ds =[]
         for data_name, ltg in zip(explicit_names, ltgs):
-            n_node = sum(map(lambda x: x[0].number_of_nodes(), ltg))
+            n_node = sum(map(lambda x: x[0].num_nodes(ntype='cell'), ltg))
             outputdata = np.zeros((n_node, 5))
             p = 0
             for i, (hetero_graph, hanna_graph) in enumerate(ltg):
                 hetero_graph, hanna_graph = to_device(hetero_graph, hanna_graph)
                 cell_label = hetero_graph.nodes['cell'].data['label'].cpu().data.numpy().flatten()
                 ln = len(cell_label)
-                #net_label = hetero_graph.nodes['net'].data['label'].cpu().data.numpy().flatten()
                 cell_pred, net_pred = forward(hanna_graph)
                 cell_pred = cell_pred.cpu().data.numpy().flatten()
-                #net_pred = net_pred.cpu().data.numpy().flatten()
-                #print(hetero_graph.nodes['cell'].data)
                 density = hetero_graph.nodes['cell'].data['hv'][:,6].cpu().data.numpy()
                 output_pos = (hetero_graph.nodes['cell'].data['pos'].cpu().data.numpy())
-                #label = numpy.concatenate(cell_label,net_label)
-                #pred = numpy.concatenate(cell_pred,net_pred)
+                ######
+                density[np.isinf(1.0 / (output_pos[:,0] + output_pos[:,1]))] = 0.0
+                assert not np.any(np.isinf(cell_pred))
+                assert not np.any(np.isnan(cell_pred))
+                ######
 
                 outputdata[p:p+ln,0], outputdata[p:p+ln,1] = cell_label, cell_pred
                 outputdata[p:p+ln,2:4], outputdata[p:p+ln, 4] = output_pos, density
@@ -178,6 +198,11 @@ def train_congestion(
         d = printout(outputdata[:, 0], outputdata[:, 1], "\t\tNODE_LEVEL: ", f'{set_name}node_level_',
                      verbose=verbose)
         # save model
+        if fig_dir is not None and data_name == 'superblue19':
+            store_cong_from_node(outputdata[:, 0], outputdata[:, 1], outputdata[:, 2], outputdata[:, 3],
+                                    args.binx, args.biny, [321, 518],
+                                    f'{args.name}-{data_name}', epoch=epoch, fig_dir=fig_dir)
+
         if model_dir is not None and set_name == 'validate_':
             rmse = d[f'{set_name}node_level_rmse']
             nonlocal best_rmse
@@ -194,8 +219,6 @@ def train_congestion(
         ds.append(d)
         logs[-1].update(mean_dict(ds))
 
-    train_dataset_names = ['hello']
-    test_dataset_names = ['olleh']
     for epoch in range(0, args.epochs + 1):
         print(f'##### EPOCH {epoch} #####')
         print(f'\tLearning rate: {optimizer.state_dict()["param_groups"][0]["lr"]}')
@@ -206,9 +229,11 @@ def train_congestion(
                 train(train_list_netlist)
         logs[-1].update({'train_time': time() - t0})
         t2  = time()
-        evaluate(train_list_netlist, 'train_', train_dataset_names, verbose=False)
-        if len(test_dataset_names):
-            evaluate(test_list_netlist, 'test_', test_dataset_names)
+        evaluate(train_list_netlist, 'train_', train_netlists_names, verbose=False)
+        if len(validation_list_netlist):
+            evaluate(validation_list_netlist, 'validate_', validation_netlists_names)
+        if len(test_list_netlist):
+            evaluate(test_list_netlist, 'test_', test_netlists_names)
         print("\tinference time", time() - t2)
         logs[-1].update({'eval_time': time() - t2})
         if log_dir is not None:

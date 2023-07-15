@@ -21,6 +21,7 @@ import warnings
 
 def train_wirelength(
     args,
+    netlists_dir=None,
     train_netlists_names=None,
     validation_netlists_names = None,
     test_netlists_names = None,
@@ -52,7 +53,7 @@ def train_wirelength(
     def load_netlists(netlists_names:List[str]):
         list_tuple_graph = []
         for netlist_name in netlists_names:
-            list_tuple_graph.extend(load_data(netlist_name))
+            list_tuple_graph.extend(load_data(os.path.join(netlists_dir,netlist_name)))
         return list_tuple_graph
 
 
@@ -66,7 +67,7 @@ def train_wirelength(
     n_test_net = sum(map(lambda x: x[0].num_nodes(ntype='net'), test_list_tuple_graph))
 
     print('##### MODEL #####')
-    in_node_feats = train_list_tuple_graph[0][1].nodes['cell'].data['hv'].shape[1]
+    in_node_feats = train_list_tuple_graph[0][1].nodes['cell'].data['hv'].shape[1]+2*args.add_pos
     in_net_feats = train_list_tuple_graph[0][1].nodes['net'].data['hv'].shape[1]
     in_hanna_feats = train_list_tuple_graph[0][1].nodes['hanna'].data['hv'].shape[1]
     in_pin_feats = train_list_tuple_graph[0][1].edges['pinned'].data['feats'].shape[1]
@@ -77,6 +78,10 @@ def train_wirelength(
         in_pin_feats=in_pin_feats,
         config=config,
         n_target=1,
+        activation=args.outtype,
+        topo_conv_type=args.topo_conv_type,
+        agg_type=args.agg_type,
+        cat_raw=args.cat_raw
     ).to(device)
     if args.model:
         model_dicts = torch.load(f'param/{args.model}.pkl', map_location=device)
@@ -105,6 +110,18 @@ def train_wirelength(
 
     def to_device(a, b):
         return a.to(device), b.to(device)
+    
+    def forward(hanna_graph):
+        if args.add_pos:
+            in_node_feat = torch.cat([hanna_graph.nodes['cell'].data['hv'],hanna_graph.nodes['cell'].data['pos']],dim=-1)
+        else:
+            in_node_feat = hanna_graph.nodes['cell'].data['hv']
+        in_net_feat = hanna_graph.nodes['net'].data['hv']
+        in_pin_feat = hanna_graph.edges['pinned'].data['feats']
+        in_hanna_feat = hanna_graph.nodes['hanna'].data['hv']
+        pred_cell, pred_net = model.forward(in_node_feat=in_node_feat,in_net_feat=in_net_feat,
+                                in_pin_feat=in_pin_feat,in_hanna_feat=in_hanna_feat,node_net_graph=hanna_graph)
+        return pred_cell, pred_net
 
 
     for epoch in range(0, args.epochs + 1):
@@ -125,13 +142,7 @@ def train_wirelength(
             for j, (hetero_graph, hanna_graph) in enumerate(ltg):
                 hetero_graph, hanna_graph = to_device(hetero_graph, hanna_graph)
                 optimizer.zero_grad()
-                _, pred = model.forward(
-                    in_node_feat=hanna_graph.nodes['cell'].data['hv'],
-                    in_net_feat=hanna_graph.nodes['net'].data['hv'],
-                    in_pin_feat=hanna_graph.edges['pinned'].data['feats'],
-                    in_hanna_feat=hanna_graph.nodes['hanna'].data['hv'],
-                    node_net_graph=hanna_graph,
-                )
+                _, pred = forward(hanna_graph)
                 batch_labels = hetero_graph.nodes['net'].data['label']
                 pred = pred.squeeze()
                 loss = loss_f(pred.view(-1), batch_labels.float())
@@ -154,13 +165,7 @@ def train_wirelength(
             with torch.no_grad():
                 for j, (hetero_graph, hanna_graph) in enumerate(ltg):
                     hetero_graph, hanna_graph = to_device(hetero_graph, hanna_graph)
-                    _, prd = model.forward(
-                        in_node_feat=hanna_graph.nodes['cell'].data['hv'],
-                        in_net_feat=hanna_graph.nodes['net'].data['hv'],
-                        in_pin_feat=hanna_graph.edges['pinned'].data['feats'],
-                        in_hanna_feat=hanna_graph.nodes['hanna'].data['hv'],
-                        node_net_graph=hanna_graph,
-                    )
+                    _, prd = forward(hanna_graph)
                     index = hetero_graph.nodes['net'].data[dgl.NID]
                     all_prd[index] += prd.squeeze()
                     weight[index] += 1
