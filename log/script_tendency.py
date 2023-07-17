@@ -30,6 +30,8 @@ def plt_tendency(logs: List[Dict[str, Any]], fig_path: str) -> Dict[str, Any]:
     list_test_grid_index_kendalltau_rho = [log['test_grid_index_kendalltau_rho'] for log in logs]
     # list_test_grid_index_mae = [log['test_grid_index_mae'] for log in logs]
     # list_test_grid_index_rmse = [log['test_grid_index_rmse'] for log in logs]
+    valid_rmse = np.array([log['validate_node_level_rmse'] for log in logs])
+    index = np.argmin(valid_rmse)
 
     fig = plt.figure(figsize=(6, 4))
     plt.plot(list_epoch, list_train_node_level_pearson_rho, color='red', linestyle='--')
@@ -50,20 +52,21 @@ def plt_tendency(logs: List[Dict[str, Any]], fig_path: str) -> Dict[str, Any]:
     plt.savefig(fig_path)
 
     return {
+        "epoch": index,
         'train_time': list_train_time[-1] / 5,
         # 'train_pearson': list_train_node_level_pearson_rho[-1],
 #         'mae': list_test_node_level_mae[-1],
 #         'rmse': list_test_node_level_rmse[-1],
-        'pearson': list_test_node_level_pearson_rho[-1],
-        'spearmanr': list_test_node_level_spearmanr_rho[-1],
-        'kendalltau': list_test_node_level_kendalltau_rho[-1],
+        'pearson': list_test_node_level_pearson_rho[index],
+        'spearmanr': list_test_node_level_spearmanr_rho[index],
+        'kendalltau': list_test_node_level_kendalltau_rho[index],
         # 'train_mae': list_train_node_level_mae[-1],
 #         'pearson (grid no index)': list_test_grid_no_index_pearson_rho[-1],
 #         'spearmanr (grid no index)': list_test_grid_no_index_spearmanr_rho[-1],
 #         'kendalltau (grid no index)': list_test_grid_no_index_kendalltau_rho[-1],
-        'pearson (grid index)': list_test_grid_index_pearson_rho[-1],
-        'spearmanr (grid index)': list_test_grid_index_spearmanr_rho[-1],
-        'kendalltau (grid index)': list_test_grid_index_kendalltau_rho[-1],
+        'pearson (grid index)': list_test_grid_index_pearson_rho[index],
+        'spearmanr (grid index)': list_test_grid_index_spearmanr_rho[index],
+        'kendalltau (grid index)': list_test_grid_index_kendalltau_rho[index],
     }
 
 
@@ -81,8 +84,11 @@ PLT_TUPLES = [
     # ('GCN (w. geom.)', 'superblue19/GCN-pos.json'),
 #     ('GAT (w. geom.)', 'superblue19/GAT-pos.json'),
 #     ('CongestionNet', 'superblue19/CongestionNet.json'),
-    ('Ours Congestion','congestion-superblue19/congestion.json'),
-    ('Ours Congestion+pos','congestion+pos-superblue19/congestion+pos.json')
+    # ('Ours Congestion','congestion-superblue19/congestion.json'),
+    # ('Ours Congestion+pos','congestion+pos-superblue19/congestion+pos.json'),
+    # ('Ours test_geompart','test_geompart-superblue19/test_geompart.json'),
+    ('Ours test_grid','test_grid-superblue19/test_grid.json'),
+    ('Ours grid 4layer','test_grid_4layer-superblue19/test_grid_4layer.json'),
 ]
 
 if __name__ == '__main__':

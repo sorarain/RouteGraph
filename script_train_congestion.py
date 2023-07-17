@@ -48,7 +48,7 @@ argparser.add_argument('--recurrent', type=bool, default=False)  # False
 argparser.add_argument('--topo_conv_type', type=str, default='CFCNN')  # CFCNN
 argparser.add_argument('--agg_type', type=str, default='max')  # max
 argparser.add_argument('--cat_raw', type=bool, default=True)  # True
-argparser.add_argument('--add_pos', type=bool, default=True)  # True
+argparser.add_argument('--add_pos', type=bool, default=False)  # True
 
 argparser.add_argument('--seed', type=int, default=0)
 argparser.add_argument('--device', type=str, default='cuda:0')
@@ -68,12 +68,14 @@ LOG_DIR=f"./log/{args.name}-{args.test}"
 FIG_DIR=f'./log/{args.name}-{args.test}_temp'
 
 train_netlists_names=[
+    'superblue1',
     'superblue2',
     'superblue3',
     'superblue6',
     'superblue7',
     'superblue9',
     'superblue11',
+    'superblue12',
     'superblue14',
     # 'superblue19',
     ]

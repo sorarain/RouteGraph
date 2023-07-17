@@ -13,7 +13,7 @@ import argparse
 import torch
 import torch.nn as nn
 
-from data.load_data import load_data
+from data.load_data import load_data,load_grid_data
 from model.RouteGNN import NetlistGNN
 from utils.output import printout, get_grid_level_corr, mean_dict
 from log.store_cong import store_cong_from_node
@@ -55,7 +55,7 @@ def train_congestion(
     def load_netlists(netlists_names:List[str]):
         list_tuple_graph = []
         for netlist_name in netlists_names:
-            list_tuple_graph.append(load_data(os.path.join(netlists_dir,netlist_name)))
+            list_tuple_graph.append(load_grid_data(os.path.join(netlists_dir,netlist_name)))
         return list_tuple_graph
     
     train_list_netlist = load_netlists(train_netlists_names)
@@ -69,7 +69,7 @@ def train_congestion(
     #model feature sizes
     in_node_feats = train_list_netlist[0][0][1].nodes['cell'].data['hv'].shape[1]+2*args.add_pos
     in_net_feats = train_list_netlist[0][0][1].nodes['net'].data['hv'].shape[1]
-    in_hanna_feats = train_list_netlist[0][1][1].nodes['hanna'].data['hv'].shape[1]
+    in_hanna_feats = train_list_netlist[0][1][1].nodes['gcell'].data['hv'].shape[1]
     in_pin_feats = train_list_netlist[0][0][1].edges['pinned'].data['feats'].shape[1]
 
     model = NetlistGNN(
@@ -86,7 +86,7 @@ def train_congestion(
     ).to(device)
     #load model
     if args.model:
-        model_dicts = torch.load(f'model/{args.model}.pkl', map_location=device)
+        model_dicts = torch.load(f'param/{args.model}.pkl', map_location=device)
         model.load_state_dict(model_dicts)
         model.eval()
     n_param = 0
@@ -119,7 +119,7 @@ def train_congestion(
             in_node_feat = hanna_graph.nodes['cell'].data['hv']
         in_net_feat = hanna_graph.nodes['net'].data['hv']
         in_pin_feat = hanna_graph.edges['pinned'].data['feats']
-        in_hanna_feat = hanna_graph.nodes['hanna'].data['hv']
+        in_hanna_feat = hanna_graph.nodes['gcell'].data['hv']
         pred_cell, pred_net = model.forward(in_node_feat=in_node_feat,in_net_feat=in_net_feat,
                                 in_pin_feat=in_pin_feat,in_hanna_feat=in_hanna_feat,node_net_graph=hanna_graph)
         if args.scalefac:

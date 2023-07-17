@@ -414,7 +414,7 @@ def build_route_graph(graph,node_pos,h_net_density_grid,v_net_density_grid,pin_d
         ('cell','point-to','hanna'):(pin_edge_nodes,pin_edge_hanna_points),
         ('hanna','point-from','cell'):(pin_edge_hanna_points,pin_edge_nodes),
         ('hanna','connect','hanna'):(route_edge_us,route_edge_vs)
-    })#,num_nodes_dict={'cell':len(node_pos),'net':len(net_degree)}
+    },num_nodes_dict={'cell':graph.num_nodes(ntype='cell'),'net':graph.num_nodes(ntype='net'),'hanna':num_hanna_points})#
     route_graph.nodes['cell'].data['hv'] = graph.nodes['cell'].data['hv']
     route_graph.nodes['cell'].data['pos'] = graph.nodes['cell'].data['pos']
     route_graph.nodes['net'].data['hv'] = graph.nodes['net'].data['hv']
@@ -518,7 +518,43 @@ def load_graph(netlist_dir):
     hetero_graph.nodes['net'].data['degree'] = net_degree
     hetero_graph.nodes['net'].data['label'] = net2hpwl
     hetero_graph.edges['pinned'].data['feats'] = pins_feats
-    partition_list = partition_graph(hetero_graph,netlist_process_dir.split('/')[-1],netlist_process_dir)
+    # partition_list = partition_graph(hetero_graph,netlist_process_dir.split('/')[-1],netlist_process_dir)
+    def node_pairs_among(nodes, max_cap=-1):
+        us = []
+        vs = []
+        if max_cap == -1 or len(nodes) <= max_cap:
+            for u in nodes:
+                for v in nodes:
+                    if u == v:
+                        continue
+                    us.append(u)
+                    vs.append(v)
+        else:
+            for u in nodes:
+                vs_ = np.random.permutation(nodes)
+                left = max_cap - 1
+                for v_ in vs_:
+                    if left == 0:
+                        break
+                    if u == v_:
+                        continue
+                    us.append(u)
+                    vs.append(v_)
+                    left -= 1
+        return us, vs
+
+    us,vs = [],[]
+    for net, list_node_feats in edges.items():
+        nodes = [node_feats[0] for node_feats in list_node_feats]
+        us_, vs_ = node_pairs_among(nodes, max_cap=8)
+        us.extend(us_)
+        vs.extend(vs_)
+    homo_graph = dgl.add_self_loop(dgl.graph((us, vs), num_nodes=len(node_pos)))
+    p_gs = dgl.metis_partition(homo_graph,int(np.ceil(len(node_pos)/10000)))
+    partition_list = []
+    for k,val in p_gs.items():
+        nids = val.ndata[dgl.NID].numpy().tolist()
+        partition_list.append(nids)
 
     list_hetero_graph = []
     list_route_graph = []
