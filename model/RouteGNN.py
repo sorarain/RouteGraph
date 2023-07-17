@@ -45,8 +45,10 @@ class NodeNetGNN(nn.Module):
                 # CFConv(node_in_feats=hidden_node_feats, edge_in_feats=hidden_edge_feats,
                 #        hidden_feats=hidden_node_feats, out_feats=out_node_feats) if route_conv_type == 'CFCNN' else
                 # GATConv(in_feats=hidden_node_feats, out_feats=out_node_feats, num_heads=1),
-            'point-to': GraphConv(in_feats=hidden_node_feats, out_feats=hidden_hanna_feats),
-            'point-from': GraphConv(in_feats=hidden_hanna_feats, out_feats=hidden_node_feats),
+            'point-to': 
+                GraphConv(in_feats=hidden_node_feats, out_feats=hidden_hanna_feats),
+            'point-from': 
+                GraphConv(in_feats=hidden_hanna_feats, out_feats=hidden_node_feats),
         }, aggregate=agg_type)
 
     def forward(self, g: dgl.DGLHeteroGraph, node_feat: torch.Tensor, net_feat: torch.Tensor,
@@ -55,7 +57,7 @@ class NodeNetGNN(nn.Module):
         h = {
             'cell': node_feat,
             'net': net_feat,
-            'hanna': hanna_feat
+            'gcell': hanna_feat
         }
 
         mod_kwargs = {}
@@ -74,7 +76,7 @@ class NodeNetGNN(nn.Module):
 
         h1 = self.hetero_conv.forward(g, h, mod_kwargs=mod_kwargs)
 
-        return h1['cell'], h1['net'] + self.net_lin(net_feat), h1['hanna']
+        return h1['cell'], h1['net'] + self.net_lin(net_feat), h1['gcell']
 #         return h1['node'], h1['net']
 
 
