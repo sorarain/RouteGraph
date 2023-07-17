@@ -30,6 +30,7 @@ def plt_tendency(logs: List[Dict[str, Any]], fig_path: str) -> Dict[str, Any]:
     list_test_grid_index_kendalltau_rho = [log['test_grid_index_kendalltau_rho'] for log in logs]
     # list_test_grid_index_mae = [log['test_grid_index_mae'] for log in logs]
     # list_test_grid_index_rmse = [log['test_grid_index_rmse'] for log in logs]
+
     valid_rmse = np.array([log['validate_node_level_rmse'] for log in logs])
     index = np.argmin(valid_rmse)
 

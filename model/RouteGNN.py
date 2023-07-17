@@ -133,6 +133,7 @@ class NetlistGNN(nn.Module):
                 node_net_graph: dgl.DGLHeteroGraph = None
                 ) -> Tuple[torch.Tensor, torch.Tensor]:
         in_net_feat = torch.log10(in_net_feat + 1e-4)
+        in_hanna_feat[:,:4] += 1e3
         in_hanna_feat = torch.log10(in_hanna_feat + 1e-4)
         node_feat = F.leaky_relu(self.node_lin(in_node_feat))
         net_feat0 = net_feat = F.leaky_relu(self.net_lin(in_net_feat))
