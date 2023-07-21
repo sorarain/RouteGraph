@@ -44,6 +44,8 @@ def build_grid_graph(part_hetero_graph,sub_node_pos,
 
     grid_pos = np.vstack([np.floor(g_point_index.reshape(-1) / num_bin_y) * bin_x + bin_x * 0.5 + xl,np.floor(g_point_index.reshape(-1) % num_bin_y) * bin_y + bin_y * 0.5 + yl]).T
     grid_index = np.int32(np.floor(np.vstack([grid_pos[:,0] / 32,grid_pos[:,1] / 40]).T))
+    grid_index[:,0] = grid_index[:,0].clip(0,h_net_density_grid.shape[0] - 1)
+    grid_index[:,1] = grid_index[:,1].clip(0,h_net_density_grid.shape[1] - 1)
     # print(xl,yl,xh,yh)
     # print(num_bin_x,num_bin_y)
     # print(np.max(np.floor(g_point_index.reshape(-1) / num_bin_y)))
@@ -75,6 +77,19 @@ def build_grid_graph(part_hetero_graph,sub_node_pos,
     grid_graph.nodes['gcell'].data['hv'] = torch.tensor(grid_feat,dtype=torch.float32)
 
     grid_graph.edges['pinned'].data['feats'] = part_hetero_graph.edges['pinned'].data['feats']
+
+    node_pos_center = np.zeros_like(sub_node_pos,dtype=np.float32)
+    cell_size = cell_size.numpy()
+    cell_size = cell_size[np.logical_not(np.isinf(1.0/(sub_node_pos_[:,0]+sub_node_pos_[:,1]))),:]
+    node_pos_center[:,0] = sub_node_pos[:,0] + cell_size[:,0] / 2
+    node_pos_center[:,1] = sub_node_pos[:,1] + cell_size[:,1] / 2
+    dis = (np.sum((node_pos_center[np.int32(pin_cell_us).reshape(-1),:] - grid_pos[np.int32(pin_grid_vs).reshape(-1),:])**2,axis=1))**0.5
+    grid_pin_feats = np.concatenate([
+        dis.reshape((-1,1)) / 20,
+        # np.ones((len(pin_cell_us),1)) * bin_x,
+        # np.ones((len(pin_cell_us),1)) * bin_y,
+    ],axis=1)
+    grid_graph.edges['point-from'].data['feats'] = torch.tensor(grid_pin_feats,dtype=torch.float32)
     
     return grid_graph
 

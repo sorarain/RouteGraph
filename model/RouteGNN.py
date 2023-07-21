@@ -11,16 +11,17 @@ import copy
 
 
 class NodeNetGNN(nn.Module):
-    def __init__(self, hidden_node_feats: int, hidden_net_feats: int, hidden_pin_feats: int, hidden_hanna_feats: int,
-                 out_node_feats: int, out_net_feats: int, topo_conv_type, agg_type):
+    def __init__(self, hidden_node_feats: int, hidden_net_feats: int, hidden_pin_feats: int, hidden_hanna_feats: int, hidden_edge_feats: int,
+                 out_node_feats: int, out_net_feats: int, topo_conv_type, grid_conv_type, agg_type):
         super(NodeNetGNN, self).__init__()
         assert topo_conv_type in ['MPNN', 'SAGE', 'CFCNN', 'GCN'], f'{topo_conv_type} not in MPNN/SAGE/CFCNN/GCN'
-        # assert route_conv_type in ['MPNN', 'SAGE', 'CFCNN', 'GCN'], f'{route_conv_type} not in MPNN/SAGE/CFCNN/GCN'
+        assert grid_conv_type in ['MPNN', 'SAGE', 'CFCNN', 'GCN'], f'{grid_conv_type} not in MPNN/SAGE/CFCNN/GCN'
         self.topo_conv_type = topo_conv_type
-        # self.route_conv_type = route_conv_type
+        self.grid_conv_type = grid_conv_type
         self.net_lin = nn.Linear(hidden_net_feats, hidden_net_feats)
         self.topo_lin = nn.Linear(hidden_pin_feats, hidden_net_feats * out_node_feats)
         self.topo_weight = nn.Linear(hidden_pin_feats, 1)
+        self.grid_weight = nn.Linear(hidden_edge_feats, 1)
 
         def topo_edge_func(efeat):
             return self.topo_lin(efeat)
@@ -48,11 +49,17 @@ class NodeNetGNN(nn.Module):
             'point-to': 
                 GraphConv(in_feats=hidden_node_feats, out_feats=hidden_hanna_feats),
             'point-from': 
+                NNConv(in_feats=hidden_hanna_feats, out_feats=hidden_node_feats,
+                       edge_func=topo_edge_func) if grid_conv_type == 'MPNN' else
+                SAGEConv(in_feats=(hidden_hanna_feats, hidden_node_feats), out_feats=hidden_node_feats,
+                         aggregator_type='pool') if grid_conv_type == 'SAGE' else
+                CFConv(node_in_feats=hidden_hanna_feats, edge_in_feats=hidden_pin_feats,
+                       hidden_feats=hidden_node_feats, out_feats=hidden_node_feats) if grid_conv_type == 'CFCNN' else
                 GraphConv(in_feats=hidden_hanna_feats, out_feats=hidden_node_feats),
         }, aggregate=agg_type)
 
     def forward(self, g: dgl.DGLHeteroGraph, node_feat: torch.Tensor, net_feat: torch.Tensor,
-                pin_feat: torch.Tensor, hanna_feat: torch.Tensor,
+                pin_feat: torch.Tensor, hanna_feat: torch.Tensor, edge_feat: torch.Tensor,
                 ) -> Tuple[torch.Tensor, torch.Tensor]:
         h = {
             'cell': node_feat,
@@ -67,12 +74,12 @@ class NodeNetGNN(nn.Module):
             mod_kwargs['pinned'] = {'edge_weight': torch.sigmoid(self.topo_weight(pin_feat))}
         elif self.topo_conv_type == 'CFCNN':
             mod_kwargs['pinned'] = {'edge_feats': pin_feat}
-        # if self.geom_conv_type == 'MPNN':
-        #     mod_kwargs['connect'] = {'efeat': edge_feat}
-        # elif self.geom_conv_type == 'SAGE':
-        #     mod_kwargs['connect'] = {'edge_weight': torch.sigmoid(self.route_weight(edge_feat))}
-        # elif self.geom_conv_type == 'CFCNN':
-        #     mod_kwargs['connect'] = {'edge_feats': edge_feat}
+        if self.grid_conv_type == 'MPNN':
+            mod_kwargs['point-from'] = {'efeat': edge_feat}
+        elif self.grid_conv_type == 'SAGE':
+            mod_kwargs['point-from'] = {'edge_weight': torch.sigmoid(self.grid_weight(edge_feat))}
+        elif self.grid_conv_type == 'CFCNN':
+            mod_kwargs['point-from'] = {'edge_feats': edge_feat}
 
         h1 = self.hetero_conv.forward(g, h, mod_kwargs=mod_kwargs)
 
@@ -81,10 +88,10 @@ class NodeNetGNN(nn.Module):
 
 
 class NetlistGNN(nn.Module):
-    def __init__(self, in_node_feats: int, in_net_feats: int, in_pin_feats: int, in_hanna_feats: int,
+    def __init__(self, in_node_feats: int, in_net_feats: int, in_pin_feats: int, in_hanna_feats: int, in_edge_feats: int,
                  n_target: int, config: Dict[str, Any],
                  activation: str = 'sig',
-                 topo_conv_type='CFCNN', agg_type='max', cat_raw=True):
+                 topo_conv_type='CFCNN', grid_conv_type='SAGE', agg_type='max', cat_raw=True):
         super(NetlistGNN, self).__init__()
         self.in_node_feats = in_node_feats
         self.in_net_feats = in_net_feats
@@ -96,6 +103,8 @@ class NetlistGNN(nn.Module):
         self.hidden_node_feats = self.out_node_feats
         self.hidden_pin_feats = config['PIN_FEATS']
         self.hidden_hanna_feats = config['HANNA_FEATS']
+        self.hidden_edge_feats = config['EDGE_FEATS']
+        self.in_edge_feats = in_edge_feats
         self.hidden_net_feats = self.out_net_feats
         self.cat_raw = cat_raw
 
@@ -103,11 +112,12 @@ class NetlistGNN(nn.Module):
         self.net_lin = nn.Linear(self.in_net_feats, self.hidden_net_feats)
         self.pin_lin = nn.Linear(self.in_pin_feats, self.hidden_pin_feats)
         self.hanna_lin = nn.Linear(self.in_hanna_feats, self.hidden_hanna_feats)
+        self.edge_lin = nn.Linear(self.in_edge_feats, self.hidden_edge_feats)
         self.list_node_net_gnn = nn.ModuleList(
             [NodeNetGNN(self.hidden_node_feats, self.hidden_net_feats,
-                        self.hidden_pin_feats, self.hidden_hanna_feats,
+                        self.hidden_pin_feats, self.hidden_hanna_feats,self.hidden_edge_feats,
                         self.out_node_feats, self.out_net_feats,
-                        topo_conv_type, agg_type) for _ in range(self.n_layer)])
+                        topo_conv_type, grid_conv_type, agg_type) for _ in range(self.n_layer)])
         self.n_target = n_target
         if cat_raw:
             self.output_layer_1 = nn.Linear(self.in_node_feats + self.hidden_node_feats, self.hidden_node_feats)
@@ -135,14 +145,18 @@ class NetlistGNN(nn.Module):
         in_net_feat = torch.log10(in_net_feat + 1e-4)
         in_hanna_feat[:,:4] += 1e3
         in_hanna_feat = torch.log10(in_hanna_feat + 1e-4)
+        in_node_feat[:,-2:] = torch.log10(in_node_feat[:,-2:] + 1e-4)
+        in_node_feat.requires_grad=True
+        in_edge_feat=node_net_graph.edges['point-from'].data['feats']
         node_feat = F.leaky_relu(self.node_lin(in_node_feat))
         net_feat0 = net_feat = F.leaky_relu(self.net_lin(in_net_feat))
         pin_feat = F.leaky_relu(self.pin_lin(in_pin_feat))
         hanna_feat = F.leaky_relu(self.hanna_lin(in_hanna_feat))
+        edge_feat = F.leaky_relu(self.edge_lin(in_edge_feat))
 
         for i in range(self.n_layer):
             node_feat, net_feat, hanna_feat = self.list_node_net_gnn[i].forward(
-                node_net_graph, node_feat, net_feat, pin_feat, hanna_feat)
+                node_net_graph, node_feat, net_feat, pin_feat, hanna_feat, edge_feat)
             node_feat, net_feat = F.leaky_relu(node_feat), F.leaky_relu(net_feat)
 
         if self.cat_raw:

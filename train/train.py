@@ -49,13 +49,14 @@ def train_congestion(
         'NET_FEATS': args.net_feats,
         'PIN_FEATS': args.pin_feats,
         'HANNA_FEATS': args.hanna_feats,
+        'EDGE_FEATS': args.edge_feats,
     }
 
     # load data
     def load_netlists(netlists_names:List[str]):
         list_tuple_graph = []
         for netlist_name in netlists_names:
-            list_tuple_graph.append(load_grid_data(os.path.join(netlists_dir,netlist_name)))
+            list_tuple_graph.append(load_grid_data(os.path.join(netlists_dir,netlist_name),args))
         return list_tuple_graph
     
     train_list_netlist = load_netlists(train_netlists_names)
@@ -71,16 +72,19 @@ def train_congestion(
     in_net_feats = train_list_netlist[0][0][1].nodes['net'].data['hv'].shape[1]
     in_hanna_feats = train_list_netlist[0][1][1].nodes['gcell'].data['hv'].shape[1]
     in_pin_feats = train_list_netlist[0][0][1].edges['pinned'].data['feats'].shape[1]
+    in_edge_feats = train_list_netlist[0][0][1].edges['point-from'].data['feats'].shape[1]
 
     model = NetlistGNN(
         in_node_feats=in_node_feats,
         in_net_feats=in_net_feats,
         in_hanna_feats=in_hanna_feats,
         in_pin_feats=in_pin_feats,
+        in_edge_feats=in_edge_feats,
         config=config,
         n_target=1,
         activation=args.outtype,
         topo_conv_type=args.topo_conv_type,
+        grid_conv_type=args.grid_conv_type,
         agg_type=args.agg_type,
         cat_raw=args.cat_raw
     ).to(device)
@@ -204,7 +208,7 @@ def train_congestion(
                                     f'{args.name}-{data_name}', epoch=epoch, fig_dir=fig_dir)
 
         if model_dir is not None and set_name == 'validate_':
-            rmse = d[f'{set_name}node_level_rmse']
+            rmse = d[f'{set_name}node_level_f1']
             nonlocal best_rmse
             if rmse < best_rmse:
                 best_rmse = rmse

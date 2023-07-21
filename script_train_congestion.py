@@ -43,9 +43,11 @@ argparser.add_argument('--node_feats', type=int, default=64)  # 64
 argparser.add_argument('--net_feats', type=int, default=128)  # 128
 argparser.add_argument('--pin_feats', type=int, default=16)  # 16
 argparser.add_argument('--hanna_feats', type=int, default=4)  # 4
+argparser.add_argument('--edge_feats', type=int, default=4)  # 4
 argparser.add_argument('--topo_geom', type=str, default='both')  # default
 argparser.add_argument('--recurrent', type=bool, default=False)  # False
 argparser.add_argument('--topo_conv_type', type=str, default='CFCNN')  # CFCNN
+argparser.add_argument('--grid_conv_type', type=str, default='SAGE')  # CFCNN
 argparser.add_argument('--agg_type', type=str, default='max')  # max
 argparser.add_argument('--cat_raw', type=bool, default=True)  # True
 argparser.add_argument('--add_pos', type=bool, default=False)  # True
@@ -62,7 +64,7 @@ argparser.add_argument('--biny', type=int, default=40)
 
 argparser.add_argument('--graph_scale', type=int, default=10000)
 args = argparser.parse_args()
-NETLISTS_DIR=f'{os.path.abspath(".")}/data/data'
+NETLISTS_DIR=f'/root/autodl-tmp/data'
 MODEL_DIR="./param"
 LOG_DIR=f"./log/{args.name}-{args.test}"
 FIG_DIR=f'./log/{args.name}-{args.test}_temp'
