@@ -29,15 +29,15 @@ def load_data(netlist_dir:str,save_type:int=1):
         pickle.dump(list_tuple_graph, f)
     return list_tuple_graph
 
-def load_grid_data(netlist_dir:str,save_type:int=1):
+def load_grid_data(netlist_dir:str,args,save_type:int=1):
     print(f"load {netlist_dir.split('/')[-1]}:")
-    if save_type == 1 and os.path.exists(osp.join(netlist_dir,'graph_grid.pickle')):
-        with open(osp.join(netlist_dir,'graph_grid.pickle'),"rb") as f:
+    if save_type == 1 and os.path.exists(osp.join(netlist_dir,f'{args.app_name}graph_grid.pickle')):
+        with open(osp.join(netlist_dir,f'{args.app_name}graph_grid.pickle'),"rb") as f:
             list_tuple_graph = pickle.load(f)
             return list_tuple_graph
     list_hetero_graph,list_route_graph = load_grid_graph(netlist_dir)
     list_tuple_graph = list(zip(list_hetero_graph, list_route_graph))
-    with open(osp.join(netlist_dir,'graph_grid.pickle'),"wb") as f:
+    with open(osp.join(netlist_dir,f'{args.app_name}graph_grid.pickle'),"wb") as f:
         pickle.dump(list_tuple_graph, f)
     return list_tuple_graph
 
