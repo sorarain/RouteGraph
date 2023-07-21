@@ -143,6 +143,7 @@ class NetlistGNN(nn.Module):
                 node_net_graph: dgl.DGLHeteroGraph = None
                 ) -> Tuple[torch.Tensor, torch.Tensor]:
         in_net_feat = torch.log10(in_net_feat + 1e-4)
+        in_hanna_feat[:,:4] += 1e3
         in_hanna_feat = torch.log10(in_hanna_feat + 1e-4)
         in_node_feat[:,-2:] = torch.log10(in_node_feat[:,-2:] + 1e-4)
         in_node_feat.requires_grad=True
