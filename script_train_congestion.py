@@ -38,11 +38,11 @@ argparser.add_argument('--win_cap', type=int, default=5)
 
 argparser.add_argument('--model', type=str, default='')  # ''
 argparser.add_argument('--trans', type=bool, default=False)  # ''
-argparser.add_argument('--layers', type=int, default=3)  # 3
+argparser.add_argument('--layers', type=int, default=2)  # 3
 argparser.add_argument('--node_feats', type=int, default=64)  # 64
 argparser.add_argument('--net_feats', type=int, default=128)  # 128
 argparser.add_argument('--pin_feats', type=int, default=16)  # 16
-argparser.add_argument('--hanna_feats', type=int, default=4)  # 4
+argparser.add_argument('--hanna_feats', type=int, default=8)  # 4
 argparser.add_argument('--edge_feats', type=int, default=4)  # 4
 argparser.add_argument('--topo_geom', type=str, default='both')  # default
 argparser.add_argument('--recurrent', type=bool, default=False)  # False
@@ -50,7 +50,7 @@ argparser.add_argument('--topo_conv_type', type=str, default='CFCNN')  # CFCNN
 argparser.add_argument('--grid_conv_type', type=str, default='SAGE')  # CFCNN
 argparser.add_argument('--agg_type', type=str, default='max')  # max
 argparser.add_argument('--cat_raw', type=bool, default=True)  # True
-argparser.add_argument('--add_pos', type=bool, default=False)  # True
+argparser.add_argument('--add_pos', type=bool, default=True)  # True
 
 argparser.add_argument('--seed', type=int, default=0)
 argparser.add_argument('--device', type=str, default='cuda:0')
