@@ -64,7 +64,7 @@ argparser.add_argument('--biny', type=int, default=40)
 
 argparser.add_argument('--graph_scale', type=int, default=10000)
 args = argparser.parse_args()
-NETLISTS_DIR=f'/root/autodl-tmp/collect'
+NETLISTS_DIR=f'./data/collect'
 MODEL_DIR="./param"
 LOG_DIR=f"./log/{args.name}-{args.test}"
 FIG_DIR=f'./log/{args.name}-{args.test}_temp'

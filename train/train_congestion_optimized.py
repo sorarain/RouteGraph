@@ -175,6 +175,9 @@ def train_congestion(
                     # cell_loss =loss_f(cell_pred.squeeze().view(-1), cell_label.float())
                     cell_loss = torch.sum(((cell_pred.view(-1) - cell_label.float()) ** 2) * weight) / (torch.sum(weight)+1e-4)
                     loss = cell_loss
+                    # print(loss,cell_label.size(),cell_pred.size())
+                    assert not torch.isnan(loss)
+                    assert not torch.isinf(loss)
                     loss.backward()
                     optimizer.step()
         scheduler.step()
@@ -225,11 +228,11 @@ def train_congestion(
                 bad_node = outputdata[:, 4] < 0.5
                 outputdata[bad_node, 1] = outputdata[bad_node, 0]
                 d = printout(outputdata[:, 0], outputdata[:, 1], "\t\tNODE_LEVEL: ", f'{set_name}node_level_',
-                     verbose=verbose)
+                     verbose=False)
                 d1, d2 = get_grid_level_corr(outputdata[:, :4], args.binx, args.biny,
                                             int(np.rint(np.max(outputdata[:, 2]) / args.binx)) + 1,
                                             int(np.rint(np.max(outputdata[:, 3]) / args.biny)) + 1,
-                                            set_name=set_name, verbose=verbose)
+                                            set_name=set_name, verbose=False)
                 d.update(d1)
                 d.update(d2)
                 ds.append(d)
