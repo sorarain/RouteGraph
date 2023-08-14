@@ -26,7 +26,7 @@ def build_grid_graph(part_hetero_graph,sub_node_pos,
     bin_x,bin_y = 27,35
     sub_node_pos = sub_node_pos.numpy()
     cell_size = part_hetero_graph.nodes['cell'].data['hv'][:,:2]
-    sub_node_pos_ = sub_node_pos
+    sub_node_pos_ = sub_node_pos.copy()
     sub_node_pos = sub_node_pos[np.logical_not(np.isinf(1.0/(sub_node_pos[:,0]+sub_node_pos[:,1])))]
     # sub_node_pos = sub_node_pos[np.logical_not(np.isinf(1.0/(cell_size[:,0]*cell_size[:,1])))]
     xl,yl,xh,yh = np.min(sub_node_pos[:,0]),np.min(sub_node_pos[:,1]),np.max(sub_node_pos[:,0]),np.max(sub_node_pos[:,1])
@@ -78,7 +78,7 @@ def build_grid_graph(part_hetero_graph,sub_node_pos,
 
     grid_graph.edges['pinned'].data['feats'] = part_hetero_graph.edges['pinned'].data['feats']
 
-    node_pos_center = np.zeros_like(sub_node_pos_,dtype=np.float32)
+    node_pos_center = np.zeros_like(sub_node_pos,dtype=np.float32)
     cell_size = cell_size.numpy()
     cell_size = cell_size[np.logical_not(np.isinf(1.0/(sub_node_pos_[:,0]+sub_node_pos_[:,1]))),:]
     node_pos_center[:,0] = sub_node_pos[:,0] + cell_size[:,0] / 2
