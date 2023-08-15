@@ -167,17 +167,25 @@ def load_data(netlist_dir:str,args,save_type:int=1):
 
             # h_net_density_grid = weight_process(h_net_density_grid, node_pos, bin_x, bin_y)
             # v_net_density_grid = weight_process(v_net_density_grid, node_pos, bin_x, bin_y)
-
-
-            node_hv = torch.tensor(np.vstack((
-            hetero_graph.nodes['cell'].data['cell_size_x'],
-            hetero_graph.nodes['cell'].data['cell_size_y'],
-            hetero_graph.nodes['cell'].data['node_pin_num'],
-            feature_grid2node_weight(h_net_density_grid, bin_x, bin_y, node_pos),
-            feature_grid2node_weight(v_net_density_grid, bin_x, bin_y, node_pos),
+            node_hv = torch.cat(
+                        [
+                            torch.tensor(
+                                np.stack([hetero_graph.nodes['cell'].data['cell_size_x'],
+                                        hetero_graph.nodes['cell'].data['cell_size_y'],
+                                        hetero_graph.nodes['cell'].data['node_pin_num']], axis=-1),
+                                        dtype=torch.float32
+                                        ),
+                            torch_feature_grid2node_weighted(
+                                    torch.tensor(np.stack([h_net_density_grid, v_net_density_grid], axis=-1), dtype=torch.float32),
+                                    bin_x,
+                                    bin_y,
+                                    torch.tensor(node_pos, dtype=torch.float32)
+                                )
+                        ],
             # feature_grid2node(pin_density_grid, 32, 40, node_pos),
             # feature_grid2node(node_density_grid, 32, 40, node_pos),
-            )),dtype=torch.float32).t()
+                        dim=-1
+                    )
 
             edge_iter = tqdm.tqdm(edges.items(),total=len(edges),leave=False)
             us = []
@@ -228,41 +236,41 @@ def load_data(netlist_dir:str,args,save_type:int=1):
             pickle.dump(batch_input, f)
     return tuple_graph,batch_input
 
-def softmax(x):
-    e_x = np.exp(x - np.max(x))
-    return e_x / e_x.sum(axis=0)
+# def softmax(x):
+#     e_x = np.exp(x - np.max(x))
+#     return e_x / e_x.sum(axis=0)
 
-def feature_grid2node_weight(grid_feature, bin_x, bin_y, node_pos):
-    node_feature = feature_grid2node(grid_feature, bin_x, bin_y, node_pos)
-    node_weight_feature = np.zeros_like(node_feature, dtype=np.float32)
-    dir = [[-1,-1], [-1,0], [-1,1], [0,-1], [0,0], [0,1], [1,-1], [1,0], [1,1]]
+# def feature_grid2node_weight(grid_feature, bin_x, bin_y, node_pos):
+#     node_feature = feature_grid2node(grid_feature, bin_x, bin_y, node_pos)
+#     node_weight_feature = np.zeros_like(node_feature, dtype=np.float32)
+#     dir = [[-1,-1], [-1,0], [-1,1], [0,-1], [0,0], [0,1], [1,-1], [1,0], [1,1]]
 
-    cnt = 0
-    for node_feat,pos in zip(node_feature,node_pos):
-        x,y = pos
-        grid_index_x_center, grid_index_y_center = int(x / bin_x), int(y / bin_y)
-        weight_array_list = []
-        feat_array_list = []
-        for d in dir:
-            dx, dy = d
-            grid_index_x = grid_index_x_center + dx
-            grid_index_y = grid_index_y_center + dy
-            if grid_index_x < 0 or grid_index_x >= grid_feature.shape[0]:
-                continue
-            if grid_index_y < 0 or grid_index_y >= grid_feature.shape[1]:
-                continue
-            grid_pos_x, grid_pos_y = grid_index_x * bin_x + bin_x * 0.5, grid_index_y * bin_y + bin_y * 0.5
-            weight_pos = 1.0 / (np.sqrt((x - grid_pos_x)**2 + (y - grid_pos_y)**2) + 1e-3)
-            # weight_grid_feature[grid_index_x, grid_index_y] += weight * node_feat
-            weight_array_list.append([weight_pos]) # yhr: bug fix
-            feat_array_list.append(grid_feature[grid_index_x, grid_index_y])
-        node_weight_feature[cnt] = np.sum(softmax(np.array(weight_array_list)) * np.array(feat_array_list), axis=0) # yhr: bug fix
-        cnt+=1
-    return node_weight_feature
+#     cnt = 0
+#     for node_feat,pos in zip(node_feature,node_pos):
+#         x,y = pos
+#         grid_index_x_center, grid_index_y_center = int(x / bin_x), int(y / bin_y)
+#         weight_array_list = []
+#         feat_array_list = []
+#         for d in dir:
+#             dx, dy = d
+#             grid_index_x = grid_index_x_center + dx
+#             grid_index_y = grid_index_y_center + dy
+#             if grid_index_x < 0 or grid_index_x >= grid_feature.shape[0]:
+#                 continue
+#             if grid_index_y < 0 or grid_index_y >= grid_feature.shape[1]:
+#                 continue
+#             grid_pos_x, grid_pos_y = grid_index_x * bin_x + bin_x * 0.5, grid_index_y * bin_y + bin_y * 0.5
+#             weight_pos = 1.0 / (np.sqrt((x - grid_pos_x)**2 + (y - grid_pos_y)**2) + 1e-3)
+#             # weight_grid_feature[grid_index_x, grid_index_y] += weight * node_feat
+#             weight_array_list.append(weight_pos)
+#             feat_array_list.append(grid_feature[grid_index_x, grid_index_y])
+#         node_weight_feature[cnt] = np.sum(softmax(np.array(weight_array_list)) * np.array(feat_array_list))
+#         cnt+=1
+#     return node_weight_feature
 
 def torch_feature_grid2node_weighted(grid_feature: torch.Tensor, bin_x: int, bin_y: int, node_pos: torch.Tensor): # TODO: test gradient flow, if any inplace opt causes issues, use clone()  
     n_bin_x, n_bin_y, n_feats = grid_feature.shape
-    n_node = node_pos.size(0)
+    n_node, _ = node_pos.shape
     
     padded_grid_feat = F.pad(grid_feature, (0,0,1,1,1,1), value=0) # zero padding the grid_feature
     grid_index_x_center, grid_index_y_center = (node_pos[:, 0] // bin_x).long() + 1, (node_pos[:, 1] // bin_y).long() + 1 # (n_node,), plus one due to zero-padding
@@ -286,38 +294,38 @@ def torch_feature_grid2node_weighted(grid_feature: torch.Tensor, bin_x: int, bin
     node_feats = (weights.unsqueeze(-1) * expanded_grid_feat).sum(1) # (n_node, n_feat)
     return node_feats
 
-def weight_process(grid_feature, node_pos, bin_x, bin_y):
-    node_feature = feature_grid2node(grid_feature, bin_x, bin_y, node_pos)
-    weight_grid_feature = np.zeros_like(grid_feature,dtype=np.float32)
-    weight_array_list = [[[] for _ in range(grid_feature.shape[1])] for _ in range(grid_feature.shape[0])]
-    feat_array_list = [[[] for _ in range(grid_feature.shape[1])] for _ in range(grid_feature.shape[0])]
-    dir = [[-1,-1], [-1,0], [-1,1], [0,-1], [0,0], [0,1], [1,-1], [1,0], [1,1]]
+# def weight_process(grid_feature, node_pos, bin_x, bin_y):
+#     node_feature = feature_grid2node(grid_feature, bin_x, bin_y, node_pos)
+#     weight_grid_feature = np.zeros_like(grid_feature,dtype=np.float32)
+#     weight_array_list = [[[] for _ in range(grid_feature.shape[1])] for _ in range(grid_feature.shape[0])]
+#     feat_array_list = [[[] for _ in range(grid_feature.shape[1])] for _ in range(grid_feature.shape[0])]
+#     dir = [[-1,-1], [-1,0], [-1,1], [0,-1], [0,0], [0,1], [1,-1], [1,0], [1,1]]
 
-    for node_feat,pos in zip(node_feature,node_pos):
-        x,y = pos
-        grid_index_x_center, grid_index_y_center = int(x / bin_x), int(y / bin_y)
+#     for node_feat,pos in zip(node_feature,node_pos):
+#         x,y = pos
+#         grid_index_x_center, grid_index_y_center = int(x / bin_x), int(y / bin_y)
 
-        for d in dir:
-            dx, dy = d
-            grid_index_x = grid_index_x_center + dx
-            grid_index_y = grid_index_y_center + dy
-            if grid_index_x < 0 or grid_index_x >= grid_feature.shape[0]:
-                continue
-            if grid_index_y < 0 or grid_index_y >= grid_feature.shape[1]:
-                continue
-            grid_pos_x, grid_pos_y = grid_index_x * bin_x + bin_x * 0.5, grid_index_y * bin_y + bin_y * 0.5
-            weight_pos = 1.0 / (np.sqrt((x - grid_pos_x)**2 + (y - grid_pos_y)**2) + 1e-3)
-            # weight_grid_feature[grid_index_x, grid_index_y] += weight * node_feat
-            weight_array_list[grid_index_x][grid_index_y].append(weight_pos)
-            feat_array_list[grid_index_x][grid_index_y].append(node_feat)
-    for i in range(grid_feature.shape[0]):
-        for j in range(grid_feature.shape[1]):
-            if len(weight_array_list[i][j]) == 0:
-                continue
-            softmax_weight = softmax(np.array(weight_array_list[i][j]))
-            weight_grid_feature[i, j] = np.sum(softmax_weight * np.array(feat_array_list[i][j]))
-            assert not np.isnan(weight_grid_feature[i, j])
-    return weight_grid_feature
+#         for d in dir:
+#             dx, dy = d
+#             grid_index_x = grid_index_x_center + dx
+#             grid_index_y = grid_index_y_center + dy
+#             if grid_index_x < 0 or grid_index_x >= grid_feature.shape[0]:
+#                 continue
+#             if grid_index_y < 0 or grid_index_y >= grid_feature.shape[1]:
+#                 continue
+#             grid_pos_x, grid_pos_y = grid_index_x * bin_x + bin_x * 0.5, grid_index_y * bin_y + bin_y * 0.5
+#             weight_pos = 1.0 / (np.sqrt((x - grid_pos_x)**2 + (y - grid_pos_y)**2) + 1e-3)
+#             # weight_grid_feature[grid_index_x, grid_index_y] += weight * node_feat
+#             weight_array_list[grid_index_x][grid_index_y].append(weight_pos)
+#             feat_array_list[grid_index_x][grid_index_y].append(node_feat)
+#     for i in range(grid_feature.shape[0]):
+#         for j in range(grid_feature.shape[1]):
+#             if len(weight_array_list[i][j]) == 0:
+#                 continue
+#             softmax_weight = softmax(np.array(weight_array_list[i][j]))
+#             weight_grid_feature[i, j] = np.sum(softmax_weight * np.array(feat_array_list[i][j]))
+#             assert not np.isnan(weight_grid_feature[i, j])
+#     return weight_grid_feature
             
 def build_grid_graph(part_hetero_graph,sub_node_pos,
                             h_net_density_grid,
