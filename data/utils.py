@@ -136,6 +136,11 @@ def feature_grid2node(grid_feature: np.ndarray, bin_x, bin_y, node_pos) -> np.nd
     return np.array([
         grid_feature[int (x / bin_x),int(y / bin_y) ] for x,y in node_pos
     ],dtype=np.float32)
+    
+def torch_feature_grid2node(grid_feature: torch.Tensor, bin_x, bin_y, node_pos: torch.Tensor) -> torch.Tensor: # vectorized, x100 faster
+    x_idx, y_idx = (node_pos[:, 0]//bin_x).long(), (node_pos[:, 1]//bin_y).long()    
+    node_features = grid_feature[x_idx, y_idx]
+    return node_features
 
 def transform_graph2edges(graph):
     num_nets = graph.num_nodes(ntype='net')

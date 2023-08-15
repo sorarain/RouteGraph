@@ -13,6 +13,7 @@ import tqdm
 import pandas as pd
 from queue import Queue
 import torch
+from torch.nn import functional as F
 import time
 import json
 
@@ -253,11 +254,37 @@ def feature_grid2node_weight(grid_feature, bin_x, bin_y, node_pos):
             grid_pos_x, grid_pos_y = grid_index_x * bin_x + bin_x * 0.5, grid_index_y * bin_y + bin_y * 0.5
             weight_pos = 1.0 / (np.sqrt((x - grid_pos_x)**2 + (y - grid_pos_y)**2) + 1e-3)
             # weight_grid_feature[grid_index_x, grid_index_y] += weight * node_feat
-            weight_array_list.append(weight_pos)
+            weight_array_list.append([weight_pos]) # yhr: bug fix
             feat_array_list.append(grid_feature[grid_index_x, grid_index_y])
-        node_weight_feature[cnt] = np.sum(softmax(np.array(weight_array_list)) * np.array(feat_array_list))
+        node_weight_feature[cnt] = np.sum(softmax(np.array(weight_array_list)) * np.array(feat_array_list), axis=0) # yhr: bug fix
         cnt+=1
     return node_weight_feature
+
+def torch_feature_grid2node_weighted(grid_feature: torch.Tensor, bin_x: int, bin_y: int, node_pos: torch.Tensor): # TODO: test gradient flow, if any inplace opt causes issues, use clone()  
+    n_bin_x, n_bin_y, n_feats = grid_feature.shape
+    n_node = node_pos.size(0)
+    
+    padded_grid_feat = F.pad(grid_feature, (0,0,1,1,1,1), value=0) # zero padding the grid_feature
+    grid_index_x_center, grid_index_y_center = (node_pos[:, 0] // bin_x).long() + 1, (node_pos[:, 1] // bin_y).long() + 1 # (n_node,), plus one due to zero-padding
+    
+    grid_index_x = torch.stack([grid_index_x_center + shift for shift in [-1, 0, 1]], dim=1).repeat_interleave(repeats=3, dim=1) # (n_nodes, 9), long tensor 
+    grid_index_y = torch.stack([grid_index_y_center + shift for shift in [-1, 0, 1]], dim=1).repeat(1, 3) # (n_nodes, 9), long tensor
+    expanded_grid_feat = padded_grid_feat[grid_index_x.view(-1), grid_index_y.view(-1)].reshape(n_node, 9, n_feats) # (n_nodes, 9, n_feats)
+    
+    grid_pos_x = torch.stack([(grid_index_x_center + shift - 0.5) * bin_x for shift in [-1, 0, 1]], dim=1).repeat_interleave(repeats=3, dim=1) # (n_nodes, 9), minus 0.5 due to zero-padding
+    grid_pos_y = torch.stack([(grid_index_y_center + shift - 0.5) * bin_y for shift in [-1, 0, 1]], dim=1).repeat(1, 3) # (n_nodes, 9)
+    grid_pos = torch.stack([grid_pos_x, grid_pos_y], dim=-1) # (n_node, 9, 2)
+    diff = node_pos.unsqueeze(1) - grid_pos # (n_node, 9, 2)
+    weights = 1 / (diff.norm(p="fro", dim=-1) + 1e-3) # (n_node, 9)
+    
+    weights[grid_index_x_center == 1, :3] = -float('Inf')
+    weights[grid_index_x_center == n_bin_x, -3:] = -float('Inf')
+    weights[grid_index_y_center == 1, 0] = weights[grid_index_y_center == 1, 3] = weights[grid_index_y_center == 1, 6] = -float('Inf')
+    weights[grid_index_y_center == n_bin_y, 2] = weights[grid_index_y_center == n_bin_y, 5] = weights[grid_index_y_center == n_bin_y, 8] = -float('Inf')
+    
+    weights = torch.softmax(weights, dim=-1)
+    node_feats = (weights.unsqueeze(-1) * expanded_grid_feat).sum(1) # (n_node, n_feat)
+    return node_feats
 
 def weight_process(grid_feature, node_pos, bin_x, bin_y):
     node_feature = feature_grid2node(grid_feature, bin_x, bin_y, node_pos)
