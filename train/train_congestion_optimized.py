@@ -1,7 +1,8 @@
 import json
 import os
 from time import time
-
+from datetime import datetime
+import tqdm
 import numpy
 import pandas
 from typing import List, Dict, Any, Tuple
@@ -17,8 +18,10 @@ from data.load_data_optimize import load_data,build_grid_graph
 from model.RouteGNN import NetlistGNN
 from utils.output import printout, get_grid_level_corr, mean_dict
 from log.store_cong import store_cong_from_node
-
+from train.dataloader import RouteGraphDataset
+from torch.utils.tensorboard import SummaryWriter
 import warnings
+from train.dataloader import preprocess_netlists
 
 
 def train_congestion(
@@ -63,12 +66,9 @@ def train_congestion(
 
         return list_tuple_graph,list_input
     
-    train_list_netlist,train_list_input = load_netlists(train_netlists_names)
+    preprocess_netlists(netlists_dir, train_netlists_names, args)
+    train_dataset = RouteGraphDataset(train_netlists_names)
     validation_list_netlist,validation_list_input = load_netlists(validation_netlists_names)
-    test_list_netlist,test_list_input = load_netlists(test_netlists_names)
-
-    #temporory training/ testing set
-
 
     print('###MODEL###')
     #model feature sizes
@@ -91,7 +91,7 @@ def train_congestion(
         in_edge_feats=in_edge_feats,
         config=config,
         n_target=1,
-        activation=args.outtype,
+        # activation=args.outtype,
         topo_conv_type=args.topo_conv_type,
         grid_conv_type=args.grid_conv_type,
         agg_type=args.agg_type,
@@ -110,21 +110,19 @@ def train_congestion(
 
     # optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 1, gamma=(1 - args.lr_decay))
-    if args.beta < 1e-5:
-        print(f'### USE L1Loss ###')
-        loss_f = nn.L1Loss()
-    elif args.beta > 7.0:
-        print(f'### USE MSELoss ###')
-        loss_f = nn.MSELoss()
-    else:
-        print(f'### USE SmoothL1Loss with beta={args.beta} ###')
-        loss_f = nn.SmoothL1Loss(beta=args.beta)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.train_epoch, eta_min=args.min_lr)
+    # if args.beta < 1e-5:
+    #     print(f'### USE L1Loss ###')
+    #     loss_f = nn.L1Loss()
+    # elif args.beta > 7.0:
+    #     print(f'### USE MSELoss ###')
+    #     loss_f = nn.MSELoss()
+    # else:
+    #     print(f'### USE SmoothL1Loss with beta={args.beta} ###')
+    #     loss_f = nn.SmoothL1Loss(beta=args.beta)
 
     best_rmse = 1e8
 
-    def to_device(a,b):
-        return a.to(device), b.to(device)
     def forward(hanna_graph):
         if args.add_pos:
             in_node_feat = torch.cat([hanna_graph.nodes['cell'].data['hv'],hanna_graph.nodes['cell'].data['pos']],dim=-1)
@@ -133,55 +131,46 @@ def train_congestion(
         in_net_feat = hanna_graph.nodes['net'].data['hv']
         in_pin_feat = hanna_graph.edges['pinned'].data['feats']
         in_hanna_feat = hanna_graph.nodes['gcell'].data['hv']
-        pred_cell, pred_net = model.forward(in_node_feat=in_node_feat,in_net_feat=in_net_feat,
+        pred_cell, _ = model.forward(in_node_feat=in_node_feat,in_net_feat=in_net_feat,
                                 in_pin_feat=in_pin_feat,in_hanna_feat=in_hanna_feat,node_net_graph=hanna_graph)
-        if args.scalefac:
-            pred_cell = pred_cell * args.scalefac
-            pred_net = pred_net * args.scalefac
+        # if args.scalefac:
+        #     pred_cell = pred_cell * args.scalefac
+        #     pred_net = pred_net * args.scalefac
+        
         return pred_cell
 
+    def update(batch_loss_lst, optimizer):
+        optimizer.zero_grad()
+        batch_loss = sum(batch_loss_lst) / len(batch_loss_lst)
+        batch_loss.backward()
+        optimizer.step()
+        batch_loss_lst.clear()
+    
     #training
-    def train(ltgs:List[List[Tuple[dgl.DGLHeteroGraph, List[dgl.DGLHeteroGraph]]]],ltinput:List[List[Dict]]):
+    def train(train_dataset):
         model.train()
         t1 = time()
         losses = []
-        for tuple_graph,batch_input in zip(ltgs,ltinput):
-            hetero_graph,list_hetero_graph = tuple_graph
-            list_route_graph = []
-            for input_dict in batch_input:
-                h_net_density_grid = input_dict['h_net_density_grid']
-                v_net_density_grid = input_dict['v_net_density_grid']
-                for sub_hetero_graph in list_hetero_graph:
-                    sub_hetero_graph.nodes['cell'].data['pos'] = input_dict['pos'][sub_hetero_graph.nodes['cell'].data[dgl.NID]]
-                    sub_hetero_graph.nodes['cell'].data['hv'] = input_dict['hv'][sub_hetero_graph.nodes['cell'].data[dgl.NID]]
-                    sub_hetero_graph.nodes['cell'].data['label'] = input_dict['label'][sub_hetero_graph.nodes['cell'].data[dgl.NID]]
-                    sub_hetero_graph.nodes['net'].data['hv'] = input_dict['net_hv'][sub_hetero_graph.nodes['net'].data[dgl.NID]]
-                    
-                    sub_node_pos = input_dict['pos'][sub_hetero_graph.nodes['cell'].data[dgl.NID]]
-                    sub_route_graph = build_grid_graph(sub_hetero_graph,sub_node_pos,
-                            h_net_density_grid,
-                            v_net_density_grid,
-                            input_dict['bin_x'],input_dict['bin_y'])
-                    sub_route_graph = sub_route_graph.to(device)
-                    optimizer.zero_grad()
-                    cell_pred = forward(sub_route_graph)
-                    cell_label = sub_hetero_graph.nodes['cell'].data['label'].to(device)
-                    # weight = 1.0 / sub_hetero_graph.nodes['cell'].data['hv'][:, 6]
-                    weight = 1.0 / torch.from_numpy(input_dict['node_density_grid'])[sub_hetero_graph.nodes['cell'].data[dgl.NID]].to(device)
-                    weight[torch.isinf(weight)] = 0.0
-                    #########
-                    weight[torch.isinf(1.0 / (sub_hetero_graph.nodes['cell'].data['pos'][:, 0] + sub_hetero_graph.nodes['cell'].data['pos'][:, 1]))] = 0.0
-                    ########
-                    # cell_loss =loss_f(cell_pred.squeeze().view(-1), cell_label.float())
-                    cell_loss = torch.sum(((cell_pred.view(-1) - cell_label.float()) ** 2) * weight) / (torch.sum(weight)+1e-4)
-                    loss = cell_loss
-                    # print(loss,cell_label.size(),cell_pred.size())
-                    assert not torch.isnan(loss)
-                    assert not torch.isinf(loss)
-                    loss.backward()
-                    optimizer.step()
+        batch_loss_lst = []
+        for sub_route_graph, cell_label, density in train_dataset:
+            sub_route_graph, cell_label, density = sub_route_graph.to(device), cell_label.to(device), density.to(device)
+            cell_pred = forward(sub_route_graph)
+            weight = 1.0 / density
+            weight[torch.isinf(weight)] = 0.
+            weight[torch.isinf(1.0 / (sub_route_graph.nodes['cell'].data['pos'][:, 0] + sub_route_graph.nodes['cell'].data['pos'][:, 1]))] = 0.
+            loss = torch.sum(((cell_pred.view(-1) - cell_label.float()) ** 2) * weight) / (torch.sum(weight)+1e-4)
+            losses.append(loss.item())
+            batch_loss_lst.append(loss)
+            # print(loss,cell_label.size(),cell_pred.size())
+            assert not torch.isnan(loss)
+            assert not torch.isinf(loss)
+            if len(batch_loss_lst) == args.batch_size:
+                update(batch_loss_lst, optimizer)
+        update(batch_loss_lst, optimizer)
+                
         scheduler.step()
         print(f"\tTraining time per epoch: {time() - t1}")
+        return sum(losses) / len(losses)
                     
     def evaluate(ltgs: List[List[Tuple[dgl.DGLHeteroGraph, dgl.DGLHeteroGraph]]], ltinput:List[List[Dict]], set_name:str,
                  explicit_names:List[str], verbose =True):
@@ -244,22 +233,26 @@ def train_congestion(
                 print(f'\tSaving model to {model_dir}/{args.name}.pkl ...:')
                 torch.save(model.state_dict(), f'{model_dir}/{args.name}.pkl')
         logs[-1].update(mean_dict(ds))
+        for key, val in mean_dict(ds).items():
+            writer.add_scalar(key, val, epoch)
 
-    for epoch in range(0, args.epochs + 1):
+    writer = SummaryWriter('./run_logs/' +  datetime.now().strftime("%Y-%m-%d %H:%M:%S") + args.name)
+
+    for epoch in range(0, args.train_epoch + 1):
         print(f'##### EPOCH {epoch} #####')
         print(f'\tLearning rate: {optimizer.state_dict()["param_groups"][0]["lr"]}')
         logs.append({'epoch': epoch})
         t0 = time()
         if epoch:
-            for _ in range(args.train_epoch):
-                train(train_list_netlist,train_list_input)
+            loss = train(train_dataset)
+            writer.add_scalar('loss', loss, epoch)
         logs[-1].update({'train_time': time() - t0})
         t2  = time()
-        evaluate(train_list_netlist, train_list_input, 'train_', train_netlists_names, verbose=False)
-        if len(validation_list_netlist):
+        # evaluate(train_list_netlist, train_list_input, 'train_', train_netlists_names, verbose=False)
+        if len(validation_list_netlist) and (epoch % args.eval_every_n_epoch == 0 or epoch == args.train_epoch):
             evaluate(validation_list_netlist, validation_list_input, 'validate_', validation_netlists_names)
-        if len(test_list_netlist):
-            evaluate(test_list_netlist, test_list_input, 'test_', test_netlists_names)
+        # if len(test_list_netlist):
+        #     evaluate(test_list_netlist, test_list_input, 'test_', test_netlists_names)
         print("\tinference time", time() - t2)
         logs[-1].update({'eval_time': time() - t2})
         if log_dir is not None:

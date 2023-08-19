@@ -90,7 +90,7 @@ class NodeNetGNN(nn.Module):
 class NetlistGNN(nn.Module):
     def __init__(self, in_node_feats: int, in_net_feats: int, in_pin_feats: int, in_hanna_feats: int, in_edge_feats: int,
                  n_target: int, config: Dict[str, Any],
-                 activation: str = 'sig',
+                #  activation: str = 'sig',
                  topo_conv_type='CFCNN', grid_conv_type='SAGE', agg_type='max', cat_raw=True):
         super(NetlistGNN, self).__init__()
         self.in_node_feats = in_node_feats
@@ -132,7 +132,7 @@ class NetlistGNN(nn.Module):
         self.output_layer_net_x1 = nn.Linear(self.in_net_feats, 64)
         self.output_layer_net_x2 = nn.Linear(64, 64)
         self.output_layer_net_x3 = nn.Linear(64, 1)
-        self.activation = activation
+        # self.activation = activation
         self.net_readout_params = [
             self.output_layer_net_1, self.output_layer_net_2, self.output_layer_net_3,
             self.output_layer_net_x1, self.output_layer_net_x2, self.output_layer_net_x3,
@@ -172,14 +172,15 @@ class NetlistGNN(nn.Module):
         net_feat_x1 = self.output_layer_net_x1(in_net_feat)
         net_feat_x2 = self.output_layer_net_x2(F.relu(net_feat_x1))
         output_net_predictions = self.output_layer_net_x3(F.relu(net_feat_x2)) + F.tanh(net_feat3)
-        if self.activation == 'sig':
-            output_predictions = torch.sigmoid(output_predictions)
-#             output_net_predictions = torch.sigmoid(output_net_predictions)
-        elif self.activation == 'tanh':
-            output_predictions = torch.tanh(output_predictions)
-#             output_net_predictions = torch.tanh(output_net_predictions)
-        else:
-            assert False, f'Undefined activation {self.activation}'
+#         if self.activation == 'sig':
+#             output_predictions = torch.sigmoid(output_predictions)
+# #             output_net_predictions = torch.sigmoid(output_net_predictions)
+#         elif self.activation == 'tanh':
+#             output_predictions = torch.tanh(output_predictions)
+# #             output_net_predictions = torch.tanh(output_net_predictions)
+#         else:
+#             assert False, f'Undefined activation {self.activation}'
+        output_predictions = torch.relu(output_predictions)
         return output_predictions, output_net_predictions
 
 if __name__ =='__main__':
