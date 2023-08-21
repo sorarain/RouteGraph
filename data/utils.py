@@ -132,13 +132,20 @@ def get_node_density(density_map,bin_x,bin_y,node_pos) -> np.ndarray:
         node_density[index_x,index_y] += 1
     return node_density
 
+def get_node_density_vectorized(density_map, bin_x, bin_y, node_pos) -> np.ndarray: # vectorized, x5 faster
+    node_density = np.zeros_like(density_map, dtype=np.float32)
+    index_x, index_y = (node_pos[:, 0] // bin_x).astype(int), (node_pos[:, 1] // bin_y).astype(int)
+    unique_pos, counts = np.unique((index_x, index_y), axis=1, return_counts=True)
+    node_density[unique_pos[0], unique_pos[1]] = counts
+    return node_density
+
 def feature_grid2node(grid_feature: np.ndarray, bin_x, bin_y, node_pos) -> np.ndarray:
     return np.array([
         grid_feature[int (x / bin_x),int(y / bin_y) ] for x,y in node_pos
     ],dtype=np.float32)
     
-def torch_feature_grid2node(grid_feature: torch.Tensor, bin_x, bin_y, node_pos: torch.Tensor) -> torch.Tensor: # vectorized, x100 faster
-    x_idx, y_idx = (node_pos[:, 0]//bin_x).long(), (node_pos[:, 1]//bin_y).long()    
+def feature_grid2node_vectorized(grid_feature: np.ndarray, bin_x, bin_y, node_pos: np.ndarray) -> np.ndarray: # vectorized, x100 faster
+    x_idx, y_idx = (node_pos[:, 0]//bin_x).astype(int), (node_pos[:, 1]//bin_y).astype(int)   
     node_features = grid_feature[x_idx, y_idx]
     return node_features
 

@@ -3,7 +3,7 @@ import os.path as osp
 import sys
 
 sys.path.append(os.path.abspath("."))
-from data.graph import load_graph
+# from data.graph import load_graph
 
 import numpy as np
 import itertools
@@ -17,8 +17,8 @@ from torch.nn import functional as F
 import time
 import json
 
-from data.utils import get_edge,get_pos,get_cell_size,get_node_pin_num,get_h_net_density_grid,get_v_net_density_grid,get_net2hpwl,get_node_congestion_label,get_pin_density,get_node_density
-from data.utils import feature_grid2node,transform_graph2edges,fo_average
+from data.utils import get_edge,get_pos,get_cell_size,get_node_pin_num,get_h_net_density_grid,get_v_net_density_grid,get_net2hpwl,get_node_congestion_label,get_pin_density,get_node_density_vectorized
+from data.utils import feature_grid2node_vectorized,transform_graph2edges,fo_average
 
 def node_pairs_among(nodes, max_cap=-1):
     us = []
@@ -163,7 +163,7 @@ def load_data(netlist_dir:str,args,save_type:int=1):
                 route_info = json.load(f)
             bin_x,bin_y = route_info['bin_size_x'],route_info['bin_size_y']
             input_dict['bin_x'],input_dict['bin_y'] = bin_x,bin_y
-            node_density_grid = get_node_density(h_net_density_grid, bin_x, bin_y, node_pos)
+            node_density_grid = get_node_density_vectorized(h_net_density_grid, bin_x, bin_y, node_pos)
 
             # h_net_density_grid = weight_process(h_net_density_grid, node_pos, bin_x, bin_y)
             # v_net_density_grid = weight_process(v_net_density_grid, node_pos, bin_x, bin_y)
@@ -221,7 +221,7 @@ def load_data(netlist_dir:str,args,save_type:int=1):
             net_span_feat = torch.tensor(net_span_feat,dtype=torch.float32)
             input_dict['h_net_density_grid'] = h_net_density_grid
             input_dict['v_net_density_grid'] = v_net_density_grid
-            input_dict['node_density_grid'] = feature_grid2node(node_density_grid, bin_x, bin_y, node_pos)
+            input_dict['node_density_grid'] = feature_grid2node_vectorized(node_density_grid, bin_x, bin_y, node_pos)
             input_dict['hv'] = node_hv
             input_dict['net_hv'] = torch.cat([net_span_feat],dim=-1)
             input_dict['pos'] = torch.tensor(node_pos,dtype=torch.float32)
