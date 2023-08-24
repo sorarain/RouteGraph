@@ -145,7 +145,7 @@ class NetlistGNN(nn.Module):
         in_net_feat = torch.log10(in_net_feat + 1e-4)
         in_hanna_feat = torch.log10(in_hanna_feat + 1e-4)
         in_node_feat[:,-2:] = torch.log10(in_node_feat[:,-2:] + 1e-4)
-        # in_node_feat.requires_grad=True
+        in_node_feat.requires_grad=True
         in_edge_feat=node_net_graph.edges['point-from'].data['feats']
         node_feat = F.leaky_relu(self.node_lin(in_node_feat))
         net_feat0 = net_feat = F.leaky_relu(self.net_lin(in_net_feat))
