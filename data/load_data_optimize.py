@@ -334,7 +334,7 @@ def build_grid_graph(part_hetero_graph,sub_node_pos,
                             # node_density_grid,
                             bin_x,bin_y):
     sub_node_pos = sub_node_pos.numpy()
-    cell_size = part_hetero_graph.nodes['cell'].data['hv'][:,:2]
+    cell_size = part_hetero_graph.nodes['cell'].data['hv'][:,:2].clone().detach()
     sub_node_pos_ = sub_node_pos.copy()
     sub_node_pos = sub_node_pos[np.logical_not(np.isinf(1.0/(sub_node_pos[:,0]+sub_node_pos[:,1])))]
     # sub_node_pos = sub_node_pos[np.logical_not(np.isinf(1.0/(cell_size[:,0]*cell_size[:,1])))]
