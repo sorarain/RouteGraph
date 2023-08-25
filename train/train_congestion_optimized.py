@@ -21,7 +21,7 @@ from log.store_cong import store_cong_from_node
 from train.dataloader import RouteGraphDataset
 from torch.utils.tensorboard import SummaryWriter
 import warnings
-from train.dataloader import preprocess_netlists
+from train.dataloader import preprocess_netlists, scale_label
 
 
 def train_congestion(
@@ -199,7 +199,7 @@ def train_congestion(
                     sub_route_graph = sub_route_graph.to(device)
                     optimizer.zero_grad()
                     cell_pred = forward(sub_route_graph)
-                    cell_label = sub_hetero_graph.nodes['cell'].data['label']
+                    cell_label = scale_label(sub_hetero_graph.nodes['cell'].data['label'])
                     ln = len(cell_label)
                     # density = hetero_graph.nodes['cell'].data['hv'][:,6].cpu().data.numpy()
                     density = torch.from_numpy(input_dict['node_density_grid'])[sub_hetero_graph.nodes['cell'].data[dgl.NID]]
