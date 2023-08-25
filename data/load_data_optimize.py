@@ -347,7 +347,8 @@ def build_grid_graph(part_hetero_graph,sub_node_pos,
     grid_us = np.concatenate([g_point_index[:-1,:].ravel(),g_point_index[:,:-1].ravel("F"),g_point_index[1:,:].ravel(),g_point_index[:,1:].ravel("F"),g_point_index.ravel()])
     grid_vs = np.concatenate([g_point_index[1:,:].ravel(),g_point_index[:,1:].ravel("F"),g_point_index[:-1,:].ravel(),g_point_index[:,:-1].ravel("F"),g_point_index.ravel()])
 
-    pin_cell_us = np.arange(num_node)[np.logical_not(np.isinf(1.0/(sub_node_pos_[:,0]+sub_node_pos_[:,1])))]
+    pin_cell_us = np.arange(sub_node_pos.shape[0])
+    # pin_cell_us = np.arange(num_node)[np.logical_not(np.isinf(1.0/(sub_node_pos_[:,0]+sub_node_pos_[:,1])))]
     # pin_cell_us = np.arange(num_node)[np.logical_not(np.isinf(1.0/(cell_size[:,0]*cell_size[:,1])))]
     pin_grid_vs = np.floor(sub_node_pos[:,0] / bin_x).clip(0,num_bin_x-1) * num_bin_y + np.floor(sub_node_pos[:,1] / bin_y).clip(0,num_bin_y-1)
 
@@ -389,7 +390,7 @@ def build_grid_graph(part_hetero_graph,sub_node_pos,
     grid_graph.edges['pinned'].data['feats'] = part_hetero_graph.edges['pinned'].data['feats']
 
     node_pos_center = np.zeros_like(sub_node_pos,dtype=np.float32)
-    cell_size = cell_size.numpy()
+    cell_size = cell_size.detach().numpy()
     cell_size = cell_size[np.logical_not(np.isinf(1.0/(sub_node_pos_[:,0]+sub_node_pos_[:,1]))),:]
     node_pos_center[:,0] = sub_node_pos[:,0] + cell_size[:,0] / 2
     node_pos_center[:,1] = sub_node_pos[:,1] + cell_size[:,1] / 2
